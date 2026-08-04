@@ -2,6 +2,10 @@
 
 A Sequence is one generation stream. The scheduler moves sequences through:
 WAITING -> RUNNING -> (PREEMPTED -> WAITING) -> FINISHED
+
+The Sequence owns token ids and metrics. It does NOT own its block table --
+BlockManager does (keyed by seq_id), so there is exactly one source of truth
+for physical block ownership.
 """
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -11,7 +15,7 @@ import time
 class SeqStatus(Enum):
     WAITING = auto()
     RUNNING = auto()
-    PREEMPTED = auto()   # evicted under memory pressure; must re-prefill or restore
+    PREEMPTED = auto()   # evicted under memory pressure; must re-prefill
     FINISHED = auto()
 
 
@@ -31,14 +35,22 @@ class Sequence:
     status: SeqStatus = SeqStatus.WAITING
     output_token_ids: list[int] = field(default_factory=list)
 
-    # Paged KV cache bookkeeping: logical block -> physical block mapping
-    # lives in BlockManager; the sequence just knows its block table.
-    block_table: list[int] = field(default_factory=list)
+    # How many of this sequence's tokens currently have KV in the paged cache.
+    # This -- not len(output_token_ids) -- is what distinguishes prefill from
+    # decode, because recompute preemption throws KV away while keeping the
+    # tokens. A preempted sequence has outputs but zero computed tokens, so it
+    # re-prefills prompt+outputs on readmission.
+    num_computed_tokens: int = 0
 
-    # Metrics (report these in your writeup: TTFT, ITL)
+    # Metrics (report these in the writeup: TTFT, ITL)
     arrival_time: float = field(default_factory=time.monotonic)
     first_token_time: float | None = None
     finish_time: float | None = None
+
+    @property
+    def token_ids(self) -> list[int]:
+        """Full context. This is what a (re-)prefill must compute KV for."""
+        return self.prompt_token_ids + self.output_token_ids
 
     @property
     def num_tokens(self) -> int:
@@ -46,8 +58,33 @@ class Sequence:
 
     @property
     def is_prefill(self) -> bool:
-        """True if this sequence hasn't computed its prompt KV yet."""
-        return len(self.output_token_ids) == 0
+        return self.num_computed_tokens == 0
 
     def last_token(self) -> int:
         return self.output_token_ids[-1] if self.output_token_ids else self.prompt_token_ids[-1]
+
+    # ---------- transitions (scheduler calls these; blocks freed separately) ----------
+
+    def on_prefilled(self) -> None:
+        self.num_computed_tokens = self.num_tokens
+        self.status = SeqStatus.RUNNING
+
+    def on_token(self, token_id: int, now: float) -> None:
+        if self.first_token_time is None:
+            self.first_token_time = now
+        self.output_token_ids.append(token_id)
+        self.num_computed_tokens += 1
+
+    def on_preempted(self) -> None:
+        self.num_computed_tokens = 0          # KV is gone; must recompute
+        self.status = SeqStatus.WAITING
+
+    def on_finished(self, now: float) -> None:
+        self.finish_time = now
+        self.status = SeqStatus.FINISHED
+
+    def is_stopped(self) -> bool:
+        """Stop condition, checked after each generated token."""
+        if len(self.output_token_ids) >= self.sampling.max_new_tokens:
+            return True
+        return bool(self.output_token_ids) and self.output_token_ids[-1] in self.sampling.stop_token_ids
