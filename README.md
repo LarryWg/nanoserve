@@ -27,6 +27,27 @@ decode, TP sharding) -> streamed tokens.
 
 <!-- One clean architecture diagram. One. Not five. -->
 
+## Running it
+
+Python 3.10+. No GPU required — the model definition is verified against
+`transformers` on CPU, which is the whole point of the M1 gate.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+```
+
+**What runs today:** the test suite. `nanoserve/engine.py` (server) and
+`benchmarks/bench.py` raise `NotImplementedError` — see the roadmap.
+
+On a CUDA machine, add the attention kernels. flash-attn compiles against your
+installed torch, so it needs `--no-build-isolation`:
+
+```bash
+pip install -e ".[gpu]" --no-build-isolation
+```
+
 ## Roadmap
 
 - [ ] Stage 1: single-GPU — continuous batching, paged KV cache, streaming API,

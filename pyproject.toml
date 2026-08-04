@@ -1,0 +1,33 @@
+[project]
+name = "nanoserve"
+version = "0.1.0"
+description = "A distributed LLM inference engine you can actually read"
+requires-python = ">=3.10"
+
+# The dependency fence from DESIGN.md. Adding to this list is a design
+# decision, not a convenience -- the point of the project is that you can
+# read all of it.
+dependencies = [
+    "torch",
+    "transformers",   # weights + tokenizer only, never modeling code
+    "safetensors",
+    "numpy",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+# CUDA-only. Everything except the attention kernels runs without these,
+# which is what keeps M1 testable on a laptop.
+gpu = ["flash-attn", "triton"]
+dev = ["pytest"]
+bench = ["matplotlib"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+# Without this, `pytest` cannot import nanoserve and only `python -m pytest`
+# works (which puts the cwd on sys.path as a side effect).
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["nanoserve*"]
