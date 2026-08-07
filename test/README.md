@@ -30,19 +30,17 @@ pytest test/
 
 ## Troubleshooting
 
-If every test file fails with `ERROR` during collection, pytest is running
-under the wrong Python (one without torch/transformers). The venv is not
-active. Either activate it:
+If every test file fails with `ERROR` during collection, check the error
+message:
 
-```bash
-source .venv/bin/activate
-```
-
-or call the venv's Python directly, which always works:
-
-```bash
-.venv/bin/python -m pytest test/
-```
+- `ModuleNotFoundError: No module named 'torch'` (or transformers): pytest
+  is running under the wrong Python. The venv is not active. Activate it
+  (`source .venv/bin/activate`) or call the venv's Python directly:
+  `.venv/bin/python -m pytest test/`
+- `ModuleNotFoundError: No module named 'nanoserve'`: fixed by the
+  `pytest.ini` at the repo root (it adds the repo root to the import
+  path). If you see this anyway, make sure `pytest.ini` exists and you
+  are on a recent commit.
 
 ## What each file checks
 
