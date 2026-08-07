@@ -26,10 +26,9 @@ the same forward pass; rank 0 samples and streams. The other ranks just run
 a receive loop.
 """
 import threading
-import time
 
 from .scheduler import Scheduler
-from .sequence import Sequence, SamplingParams
+from .sequence import SamplingParams
 from .model_runner import ModelRunner
 
 

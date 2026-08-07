@@ -32,8 +32,8 @@ Uses [uv](https://docs.astral.sh/uv/) for package management.
 git clone https://github.com/LarryWg/nanoserve.git
 cd nanoserve
 uv sync
-uv run pytest -m "not slow"   # fast tests, no downloads
-uv run pytest                 # adds the HF equivalence suite (downloads ~2.5 GB)
+uv run pytest            # fast tests, no downloads
+uv run pytest -m slow    # adds the HF equivalence suite (downloads ~2.5 GB)
 ```
 
 The slow suite is the heart of the project: it loads real Qwen checkpoints

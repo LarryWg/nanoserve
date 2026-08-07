@@ -17,16 +17,17 @@ safetensors, pytest) from the lockfile.
 
 ## Running
 
-Fast tests (no downloads, a few seconds):
-
-```bash
-uv run pytest -m "not slow"
-```
-
-Everything, including the model equivalence tests:
+Fast tests (no downloads, a few seconds). This is the default:
 
 ```bash
 uv run pytest
+```
+
+The model equivalence tests download ~2.5 GB of checkpoints, so they are
+marked `slow` and excluded by default. Run them explicitly:
+
+```bash
+uv run pytest -m slow
 ```
 
 ## Troubleshooting

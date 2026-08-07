@@ -7,7 +7,6 @@ dependencies = [
     "torch",
     "transformers",
     "safetensors",
-    "numpy",
 ]
 
 [dependency-groups]

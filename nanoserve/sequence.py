@@ -60,6 +60,7 @@ class Sequence:
     def is_prefill(self) -> bool:
         return self.num_computed_tokens == 0
 
+    @property
     def last_token(self) -> int:
         return self.output_token_ids[-1] if self.output_token_ids else self.prompt_token_ids[-1]
 
@@ -81,6 +82,7 @@ class Sequence:
         self.finish_time = now
         self.status = SeqStatus.FINISHED
 
+    @property
     def is_stopped(self) -> bool:
         """Stop condition, checked after each generated token."""
         if len(self.output_token_ids) >= self.sampling.max_new_tokens:

@@ -21,8 +21,6 @@ Honesty rule for the writeup: the section "where we lose to vLLM and why"
 will earn more credibility (and stars) than any number you win on.
 """
 import argparse
-import asyncio
-import time
 
 # TODO: async client firing requests at your SSE endpoint with Poisson
 # inter-arrival times; collect per-request timestamps; dump JSON;
