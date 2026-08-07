@@ -1,19 +1,20 @@
-"""M1 gate, part 2: the full model must match transformers token-for-token.
+"""The full model must match transformers token-for-token.
 
-Nothing downstream (KV cache, scheduler, server) proceeds until this passes
--- DESIGN.md §9: "M1 is the gate for everything."
+Everything downstream (KV cache, scheduler, server) is built on the
+assumption that this model computes exactly what HF computes, so this
+comparison is the gate for the rest of the engine.
 
 Two checkpoints, chosen so every architectural branch in ModelConfig is
 exercised against a real HF model:
   - Qwen3-0.6B:            qk_norm=True,  attention_bias=False, untied lm_head
   - Qwen2.5-0.5B-Instruct: qk_norm=False, attention_bias=True,  tied lm_head
 
-The gate (DESIGN.md §5), per checkpoint:
+The gate, per checkpoint:
   1. logits match HF tightly when both run in fp32 (atol=1e-3 -- proves the
      math is right), and in bf16-as-served the next-token argmax agrees at
-     every prompt position. DESIGN's "atol=1e-2 bf16" turns out to be
-     unachievable between ANY two correct implementations: raw bf16 logits
-     at magnitude ~20-30 have a representable step of ~0.1-0.25, and op
+     every prompt position. A raw bf16 logits atol of 1e-2 turns out to be
+     unachievable between ANY two correct implementations: bf16 logits at
+     magnitude ~20-30 have a representable step of ~0.1-0.25, and op
      ordering differences accumulate to ~1-2 ulp over 28 layers (measured
      max diff 0.28 on Qwen3-0.6B). The honest bf16 invariant is argmax
      identity, which is what the decode gate below relies on.
@@ -112,7 +113,7 @@ def test_greedy_decode_matches_hf(repo_id):
     )[0, len(prompt_ids):].tolist()
 
     # No KV cache yet: recompute the full context each step. O(T^2) and
-    # proud of it -- correctness first, the cache lands in M2.
+    # proud of it -- correctness first, the cache lands later.
     our_ids = list(prompt_ids)
     with torch.inference_mode():
         for _ in range(NUM_GREEDY_TOKENS):

@@ -1,18 +1,18 @@
 """The model: a dense Llama/Qwen decoder, written to be read.
 
-This is M1's deliverable: our own nn.Module whose logits match
-transformers token-for-token. It is deliberately NOT a serving model yet --
-there is no KV cache and no batching. The 50-token greedy gate recomputes the
-full context each step, which is slow and completely fine at gate scale
-(~100 tokens). M2 turns the attention call into flash-attn varlen + a paged
-KV cache; everything above and below that call stays as written here.
+Our own nn.Module, verified to match transformers token-for-token. It is
+deliberately NOT a serving model yet -- there is no KV cache and no
+batching, so generation recomputes the full context every step. That is
+slow and completely fine at test scale (~100 tokens); the attention call
+is the one place that changes when a paged KV cache and varlen kernels
+arrive, and everything above and below that call stays as written here.
 
 Two structural choices, made once and held everywhere:
 
 1. FLAT layout. Activations are [num_tokens, ...] with no batch dim, and
    positions arrive as an explicit int tensor (see layers.py for why).
-   M1 only ever runs one sequence, so positions are arange(T) -- but the
-   forward signature is already the one the batched engine will use.
+   Only one sequence is ever run here, so positions are arange(T) -- but
+   the forward signature is already the one a batched engine will use.
 
 2. HF-faithful names. Submodules are named exactly as transformers names
    them (model.layers.{i}.self_attn.q_proj.weight, ...). That makes weight
@@ -42,8 +42,9 @@ class Attention(nn.Module):
         head independently -- not the whole [T, heads*dim] vector.
       - GQA (all supported archs): num_kv_heads < num_attention_heads. SDPA
         wants matching head counts, so k/v are repeated num_kv_groups times.
-        The repeat is materialized, not a view trick: flash-attn replaces
-        this whole path in M2, and clarity beats cleverness until then.
+        The repeat is materialized, not a view trick: a fused kernel can
+        replace this whole path later, and clarity beats cleverness until
+        then.
     """
 
     def __init__(self, config: ModelConfig):
@@ -87,9 +88,9 @@ class Attention(nn.Module):
         q, k = apply_rope(q, k, cos, sin)
 
         # SDPA wants [heads, T, head_dim]. is_causal=True is exactly the
-        # prefill mask because M1 is single-sequence with positions 0..T-1;
-        # with an explicit-positions flat batch this must become the varlen
-        # kernel instead (M2), since "causal" is then per-sequence.
+        # right mask for one sequence with positions 0..T-1; a flat batch
+        # packing several sequences would need per-sequence causal masking
+        # (e.g. a varlen kernel) instead.
         q = q.transpose(0, 1)
         k = k.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
         v = v.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
@@ -161,12 +162,14 @@ class NanoModel(nn.Module):
 
 
 class NanoForCausalLM(nn.Module):
-    """Backbone + lm_head. This is the class the M1 gate compares against
-    HF's LlamaForCausalLM/Qwen2ForCausalLM/Qwen3ForCausalLM.
+    """Backbone + lm_head. This is the class the HF equivalence tests
+    compare against transformers' LlamaForCausalLM / Qwen2ForCausalLM /
+    Qwen3ForCausalLM.
 
     forward takes the flat-layout pair (input_ids, positions) and returns
     logits for EVERY position [T, vocab] -- the caller slices what it needs
-    (M1: the last position; the engine: last position per sequence).
+    (a single sequence wants only the last position; a batching engine
+    wants the last position per sequence).
     """
 
     def __init__(self, config: ModelConfig):

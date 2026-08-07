@@ -5,8 +5,8 @@ loading is a strict load_state_dict over the concatenation of every shard
 -- no handwritten key mapping. The strictness is the point: a checkpoint
 key we don't consume, or a parameter the checkpoint doesn't provide, raises
 instead of leaving a silently-initialized (i.e. random) tensor in the model.
-M1 compares against HF token-for-token; a silent partial load is how that
-test lies.
+The HF equivalence tests compare token-for-token; a silent partial load is
+how those tests lie.
 
 Tied embeddings: checkpoints with tie_word_embeddings=true typically omit
 lm_head.weight entirely. Our module has no lm_head in that case (the head
