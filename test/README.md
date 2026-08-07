@@ -6,26 +6,27 @@ implementations (RMSNorm, RoPE, the full model).
 
 ## Setup
 
-From the repo root:
+From the repo root, using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install torch transformers safetensors pytest
+uv sync
 ```
+
+This creates `.venv` and installs everything (torch, transformers,
+safetensors, pytest) from the lockfile.
 
 ## Running
 
 Fast tests (no downloads, a few seconds):
 
 ```bash
-pytest test/ -m "not slow"
+uv run pytest -m "not slow"
 ```
 
 Everything, including the model equivalence tests:
 
 ```bash
-pytest test/
+uv run pytest
 ```
 
 ## Troubleshooting
@@ -34,9 +35,9 @@ If every test file fails with `ERROR` during collection, check the error
 message:
 
 - `ModuleNotFoundError: No module named 'torch'` (or transformers): pytest
-  is running under the wrong Python. The venv is not active. Activate it
-  (`source .venv/bin/activate`) or call the venv's Python directly:
-  `.venv/bin/python -m pytest test/`
+  is running under the wrong Python. Use `uv run pytest`, which always runs
+  in the project environment. If you activated `.venv` manually instead,
+  run `.venv/bin/python -m pytest test/`.
 - `ModuleNotFoundError: No module named 'nanoserve'`: fixed by the
   `pytest.ini` at the repo root (it adds the repo root to the import
   path). If you see this anyway, make sure `pytest.ini` exists and you

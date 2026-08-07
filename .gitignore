@@ -3,3 +3,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 .DS_Store
+
+# Local-only working docs (design notes, roadmap, plans)
+DESIGN.md
+CLAUDE.md
+.claude/
