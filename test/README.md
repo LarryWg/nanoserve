@@ -28,6 +28,22 @@ Everything, including the model equivalence tests:
 pytest test/
 ```
 
+## Troubleshooting
+
+If every test file fails with `ERROR` during collection, pytest is running
+under the wrong Python (one without torch/transformers). The venv is not
+active. Either activate it:
+
+```bash
+source .venv/bin/activate
+```
+
+or call the venv's Python directly, which always works:
+
+```bash
+.venv/bin/python -m pytest test/
+```
+
 ## What each file checks
 
 - `test_layers.py`: RMSNorm and RoPE produce exactly the same numbers as
