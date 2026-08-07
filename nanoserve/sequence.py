@@ -36,7 +36,7 @@ class Sequence:
     output_token_ids: list[int] = field(default_factory=list)
 
     # How many of this sequence's tokens currently have KV in the paged cache.
-    # This -- not len(output_token_ids) -- is what distinguishes prefill from
+    # This, not len(output_token_ids), is what distinguishes prefill from
     # decode, because recompute preemption throws KV away while keeping the
     # tokens. A preempted sequence has outputs but zero computed tokens, so it
     # re-prefills prompt+outputs on readmission.

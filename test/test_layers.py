@@ -1,4 +1,4 @@
-"""M1 gate, part 1: RMSNorm and RoPE must match transformers exactly.
+"""RMSNorm and RoPE must match transformers exactly.
 
 We compare against the real transformers implementations rather than a
 hand-written reference, because the thing being tested IS whether our reading

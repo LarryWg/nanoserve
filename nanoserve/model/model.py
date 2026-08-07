@@ -1,23 +1,23 @@
 """The model: a dense Llama/Qwen decoder, written to be read.
 
 Our own nn.Module, verified to match transformers token-for-token. It is
-deliberately NOT a serving model yet -- there is no KV cache and no
-batching, so generation recomputes the full context every step. That is
-slow and completely fine at test scale (~100 tokens); the attention call
-is the one place that changes when a paged KV cache and varlen kernels
-arrive, and everything above and below that call stays as written here.
+deliberately NOT a serving model yet: there is no KV cache and no batching,
+so generation recomputes the full context every step. That is slow and
+completely fine at test scale (~100 tokens). The attention call is the one
+place that changes when a paged KV cache and varlen kernels arrive;
+everything above and below that call stays as written here.
 
 Two structural choices, made once and held everywhere:
 
 1. FLAT layout. Activations are [num_tokens, ...] with no batch dim, and
    positions arrive as an explicit int tensor (see layers.py for why).
-   Only one sequence is ever run here, so positions are arange(T) -- but
+   Only one sequence is ever run here, so positions are arange(T), but
    the forward signature is already the one a batched engine will use.
 
 2. HF-faithful names. Submodules are named exactly as transformers names
    them (model.layers.{i}.self_attn.q_proj.weight, ...). That makes weight
-   loading a strict load_state_dict instead of a handwritten key mapping --
-   a mapping we wrote ourselves could encode the same misunderstanding as
+   loading a strict load_state_dict instead of a handwritten key mapping.
+   A mapping we wrote ourselves could encode the same misunderstanding as
    the model and silently "pass". Strictness is the test's best friend.
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ class Attention(nn.Module):
         do not. o_proj never does, in every arch we support.
       - qk_norm (Qwen3): a per-head RMSNorm over head_dim applied to q and k
         BEFORE RoPE. Weight shape is [head_dim], so the norm normalizes each
-        head independently -- not the whole [T, heads*dim] vector.
+        head independently, not the whole [T, heads*dim] vector.
       - GQA (all supported archs): num_kv_heads < num_attention_heads. SDPA
         wants matching head counts, so k/v are repeated num_kv_groups times.
         The repeat is materialized, not a view trick: a fused kernel can
@@ -167,7 +167,7 @@ class NanoForCausalLM(nn.Module):
     Qwen3ForCausalLM.
 
     forward takes the flat-layout pair (input_ids, positions) and returns
-    logits for EVERY position [T, vocab] -- the caller slices what it needs
+    logits for EVERY position [T, vocab]. The caller slices what it needs
     (a single sequence wants only the last position; a batching engine
     wants the last position per sequence).
     """
@@ -202,7 +202,7 @@ class NanoForCausalLM(nn.Module):
         Construction happens under set_default_dtype(config.dtype) so
         parameters are born bf16/fp16: load_state_dict copy_()s into the
         existing parameter dtype, and we want the model to hold the
-        checkpoint's dtype exactly -- comparing our fp32-held weights
+        checkpoint's dtype exactly. Comparing our fp32-held weights
         against HF's bf16 model would pass the atol while testing nothing
         about bf16 serving numerics. The RoPE cos/sin caches are explicitly
         fp32 in layers.py and are unaffected by the default dtype, by design.

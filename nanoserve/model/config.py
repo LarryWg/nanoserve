@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 
 # Dense decoder-only models we have checked token-for-token against HF.
-# Anything else fails loudly -- see DESIGN.md non-goals.
+# Anything else fails loudly (see DESIGN.md non-goals).
 SUPPORTED_ARCHITECTURES = {
     "LlamaForCausalLM",
     "Qwen2ForCausalLM",
@@ -76,8 +76,8 @@ class ModelConfig:
         head_dim = raw.get("head_dim") or hidden_size // num_heads
 
         # Llama-3.1/3.2 rescale inv_freq per frequency band ("llama3" rope_type).
-        # Ignoring it would still produce fluent-looking text while silently
-        # failing M1, so reject rather than approximate.
+        # Ignoring it would still produce fluent-looking text that is silently
+        # wrong, so reject rather than approximate.
         if raw.get("rope_scaling"):
             raise ValueError(
                 f"rope_scaling={raw['rope_scaling']} is not implemented yet; "

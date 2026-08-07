@@ -10,10 +10,10 @@ exercised against a real HF model:
   - Qwen2.5-0.5B-Instruct: qk_norm=False, attention_bias=True,  tied lm_head
 
 The gate, per checkpoint:
-  1. logits match HF tightly when both run in fp32 (atol=1e-3 -- proves the
-     math is right), and in bf16-as-served the next-token argmax agrees at
-     every prompt position. A raw bf16 logits atol of 1e-2 turns out to be
-     unachievable between ANY two correct implementations: bf16 logits at
+  1. logits match HF tightly when both run in fp32 (atol=1e-3, which proves
+     the math is right), and in bf16-as-served the next-token argmax agrees
+     at every prompt position. A raw bf16 logits atol of 1e-2 turns out to
+     be unachievable between ANY two correct implementations: bf16 logits at
      magnitude ~20-30 have a representable step of ~0.1-0.25, and op
      ordering differences accumulate to ~1-2 ulp over 28 layers (measured
      max diff 0.28 on Qwen3-0.6B). The honest bf16 invariant is argmax
@@ -23,9 +23,9 @@ The gate, per checkpoint:
      loops always run the full 50 steps. repetition_penalty=1.0 is passed
      explicitly because instruct checkpoints ship a generation_config.json
      with repetition_penalty 1.1 baked in, and HF applies it EVEN under
-     do_sample=False -- without this, HF isn't doing pure greedy and the
+     do_sample=False. Without this, HF is not doing pure greedy and the
      comparison fails at the first repeated token (this actually happened:
-     Qwen2.5 diverged at token 3, a 1.6-logit gap, i.e. not bf16 noise).
+     Qwen2.5 diverged at token 3, a 1.6-logit gap, so not bf16 noise).
 
 Runs on CPU (no GPU on this machine yet); bf16 CPU matmul/SDPA are
 supported in torch 2.13 on Apple Silicon. First run downloads ~2.5 GB
@@ -85,9 +85,9 @@ def test_logits_match_hf(repo_id):
 
     # (b) bf16 as-served: logits are allowed bf16 rounding noise (measured:
     # max abs diff 0.28 on Qwen3-0.6B, i.e. 1-2 ulp at logit magnitudes
-    # ~20-30 -- atol=1e-2 in raw bf16 is unachievable for ANY two correct
-    # implementations with different op order). What the decode gate
-    # actually relies on is argmax agreement, so that is what we pin:
+    # ~20-30). An atol of 1e-2 on raw bf16 logits is unachievable for ANY
+    # two correct implementations with different op order. What the decode
+    # gate actually relies on is argmax agreement, so that is what we pin:
     # the next-token choice must be identical at EVERY prompt position.
     with torch.inference_mode():
         hf_logits = hf(ids.unsqueeze(0)).logits[0].float()
@@ -113,7 +113,7 @@ def test_greedy_decode_matches_hf(repo_id):
     )[0, len(prompt_ids):].tolist()
 
     # No KV cache yet: recompute the full context each step. O(T^2) and
-    # proud of it -- correctness first, the cache lands later.
+    # proud of it: correctness first, the cache lands later.
     our_ids = list(prompt_ids)
     with torch.inference_mode():
         for _ in range(NUM_GREEDY_TOKENS):

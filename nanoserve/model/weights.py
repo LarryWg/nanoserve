@@ -45,13 +45,13 @@ def load_weights(model: torch.nn.Module, model_path: str | Path) -> None:
 
     if config.tie_word_embeddings and "lm_head.weight" in state:
         # The module has no lm_head to receive it; strict load would fail on
-        # the unexpected key. The tie makes it redundant -- verify it is
+        # the unexpected key. The tie makes it redundant, so verify it is
         # actually the embedding matrix before dropping it, since a DIFFERENT
         # lm_head weight here would mean the checkpoint isn't really tied.
         if not torch.equal(state["lm_head.weight"], state["model.embed_tokens.weight"]):
             raise ValueError(
                 "config says tie_word_embeddings but lm_head.weight differs "
-                "from embed_tokens.weight -- refusing to guess"
+                "from embed_tokens.weight; refusing to guess"
             )
         del state["lm_head.weight"]
 

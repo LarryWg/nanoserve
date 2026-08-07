@@ -1,34 +1,33 @@
-"""Model execution: paged attention + (Stage 2) tensor parallelism.
+"""Model execution: paged attention now, tensor parallelism later.
 
-Stage 1 pragmatic path — don't write attention kernels from scratch:
-- Load HF Llama/Qwen weights into YOUR OWN model definition (a plain
-  nn.Module you write; ~300 lines). You need your own module to control
-  the attention call and, later, to shard weights for TP. Copying
-  transformers' modeling code defeats the purpose.
-- Use flash-attn's `flash_attn_varlen_func` for prefill and a paged decode
-  kernel for decode. Options for decode:
-    a) flash-attn's kv-cache paged interface (flash_attn_with_kvcache),
-    b) write a Triton paged-decode kernel yourself (STRONG writeup material:
-       compare your kernel vs flash-attn, show the gap, explain it).
-- KV cache tensors: one per layer,
+Pragmatic path for attention; do not write kernels from scratch yet:
+- The model definition lives in nanoserve/model/model.py and loads HF
+  safetensors weights. Having our own nn.Module is what lets us control
+  the attention call and later shard weights across GPUs.
+- Prefill: flash-attn's flash_attn_varlen_func, which takes cu_seqlens and
+  handles the flat variable-length batch directly.
+- Decode: start with flash-attn's paged kv-cache interface
+  (flash_attn_with_kvcache). A hand-written Triton paged-decode kernel
+  comes later, benchmarked against flash-attn so the gap is measured, not
+  guessed.
+- KV cache tensors: one per layer, shaped
   [num_blocks, 2, num_kv_heads, block_size, head_dim], dtype fp16/bf16.
 
-Stage 2 — tensor parallelism (raw torch.distributed, NCCL backend):
-- Attention: shard heads across ranks (column-parallel qkv_proj,
-  row-parallel o_proj -> ONE all_reduce after o_proj).
-- MLP: column-parallel gate/up_proj, row-parallel down_proj -> ONE
-  all_reduce after down_proj.
-- Exactly 2 all_reduces per layer. Derive why on paper before coding —
-  this derivation IS the interview.
-- Embedding/lm_head: vocab-parallel or replicate (replicate is fine at
-  this scale; say so and quantify the memory cost).
-- Every rank runs the same scheduler decisions: rank 0 schedules and
-  broadcasts batch metadata (or run the scheduler deterministically
-  everywhere — discuss the tradeoff in the writeup).
+Tensor parallelism (raw torch.distributed, NCCL backend):
+- Attention: shard heads across ranks. qkv_proj is column-parallel, o_proj
+  is row-parallel, with one all_reduce after o_proj.
+- MLP: gate/up_proj are column-parallel, down_proj is row-parallel, with
+  one all_reduce after down_proj.
+- Exactly 2 all_reduces per layer. Deriving why on paper before coding is
+  the exercise.
+- Embedding and lm_head: replicate on every rank (fine at this scale;
+  quantify the memory cost when writing it up).
+- Every rank must run the same scheduler decisions: rank 0 schedules and
+  broadcasts the batch metadata each step.
 
-Profiling to capture AS YOU GO (screenshots for the writeup):
+Profiling to capture as you go:
 - Nsight Systems trace showing compute/NCCL overlap (or lack of it)
-- decode step time vs batch size (find where you go memory-bound)
+- decode step time vs batch size (find where the step goes memory-bound)
 """
 import torch
 
@@ -38,11 +37,11 @@ class ModelRunner:
         self.tp_rank = tp_rank
         self.tp_size = tp_size
         self.block_size = block_size
-        # TODO Stage 1: build your nn.Module, load HF safetensors into it,
-        #   allocate KV cache after measuring free VRAM (-> num_blocks).
-        # TODO Stage 2: shard weights at load time based on (tp_rank, tp_size);
-        #   never materialize the full weight on every rank (measure load time
-        #   and peak host RAM — nice writeup detail).
+        # TODO: build the model, load HF safetensors into it, and allocate
+        #   the KV cache after measuring free VRAM (that gives num_blocks).
+        # TODO (multi-GPU): shard weights at load time based on
+        #   (tp_rank, tp_size); never materialize the full weight on every
+        #   rank. Measuring load time and peak host RAM is a nice detail.
         raise NotImplementedError
 
     @torch.inference_mode()
@@ -54,5 +53,5 @@ class ModelRunner:
 
     def sample(self, logits: torch.Tensor, batch) -> list[int]:
         """Temperature + top-p sampling. Keep it simple; vectorize later
-        only if profiling shows it matters (it usually doesn't — say so)."""
+        only if profiling shows it matters (it usually does not)."""
         raise NotImplementedError

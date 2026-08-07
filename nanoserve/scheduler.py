@@ -1,29 +1,33 @@
 """Continuous batching scheduler.
 
-SECOND CORE FILE — implement the policy yourself.
+Each engine step, the scheduler decides which sequences the model runs next.
+That decision is the heart of a serving engine, so this file is meant to be
+written and understood by hand.
 
-Each engine step, the scheduler assembles one batch. Key concepts:
+The ideas:
 
-1. Iteration-level scheduling (the whole point of continuous batching):
-   sequences join/leave the batch every step, not every request-completion.
-   This is why throughput beats static batching at high QPS.
+1. Iteration-level scheduling (the point of continuous batching): sequences
+   join and leave the batch every step, not only when a whole request
+   finishes. This is why continuous batching beats static batching at high
+   request rates.
 
-2. Prefill vs decode: a step is either a prefill batch or a decode batch
-   (simple version), or mixed via chunked prefill (advanced — great Stage 3
-   writeup material: chunked prefill trades TTFT of new requests against
-   ITL spikes for running ones. Measure both and show the curve.)
+2. Prefill vs decode: a step is either a prefill batch or a decode batch,
+   never a mix. (Mixing them is called chunked prefill, a later extension:
+   it trades faster first tokens for new requests against small pauses in
+   the token stream of running ones.)
 
-3. Token budget: cap total tokens per step (e.g. max_num_batched_tokens=8192)
-   so one huge prompt doesn't blow activation memory or stall decodes.
+3. Token budget: cap the total tokens per step (max_num_batched_tokens) so
+   one huge prompt cannot blow up activation memory or starve the decodes.
 
-Policy decisions YOU own (each is an interview question):
-- Admission: FCFS from the waiting queue? What starvation risks exist?
-- Prefill priority: schedule waiting prefills before decodes ("prefill-first",
-  better TTFT) or after ("decode-first", better ITL)? Make it a config flag
-  and BENCHMARK BOTH — that comparison chart is writeup gold.
-- Preemption: when append_slot raises OutOfBlocks mid-decode, which victim?
-  vLLM evicts the most-recently-arrived (LIFO) — why? (Hint: fairness +
-  recompute cost of long-running seqs.)
+Policy decisions to make here:
+- Admission: take waiting requests first-come-first-served.
+- Prefill priority: run waiting prefills before decodes ("prefill-first",
+  lower time to first token) or after ("decode-first", steadier output
+  stream)? Keep it a config flag and benchmark both.
+- Preemption: when append_slot raises OutOfBlocks mid-decode, which running
+  sequence gets evicted? Evict the most recently arrived one (LIFO): it has
+  the least sunk compute, and evicting the oldest would thrash long
+  sequences.
 """
 from dataclasses import dataclass, field
 from collections import deque
@@ -64,7 +68,7 @@ class Scheduler:
            Return a decode batch of all running seqs.
         3. Return None if nothing to do.
         """
-        raise NotImplementedError("implement me — this is your interview answer")
+        raise NotImplementedError("implement me")
 
     def finish(self, seq: Sequence) -> None:
         """Free blocks, remove from running, mark finished."""

@@ -87,8 +87,8 @@ class BlockManager:
         self._check_invariants()
 
     def _release_block(self, block_id: int) -> None:
-        """Sole return path to the free list. Prefix caching (Stage 3) turns
-        this into decref-and-return-if-zero; nothing else changes."""
+        """Sole return path to the free list. When prefix caching arrives,
+        this becomes decref-and-return-if-zero; nothing else changes."""
         self._free.append(block_id)
 
     # ---------- invariants ----------
