@@ -16,9 +16,9 @@ class RMSNorm(nn.Module):
     """Llama/Qwen RMSNorm.
 
     The fp32 upcast is not optional: in bf16 the sum of squares over a few
-    thousand elements loses enough precision to move logits well past M1's
-    atol. HF upcasts, normalizes, casts back, and only then applies the
-    weight -- we match that order exactly so the comparison is apples to apples.
+    thousand elements loses enough precision to visibly move the logits.
+    HF upcasts, normalizes, casts back, and only then applies the weight.
+    We match that order exactly so the comparison is apples to apples.
     """
 
     def __init__(self, hidden_size: int, eps: float):
@@ -41,8 +41,9 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     permutes q_proj/k_proj weights so that the halves layout (x0,x_{d/2}),
     (x1,x_{1+d/2}), ... is equivalent. Implement the paper's interleaving
     against HF weights and the model still emits fluent, grammatical, wrong
-    text -- it degrades gracefully instead of crashing, which is exactly why
-    M1 compares against HF token-for-token instead of eyeballing a sample.
+    text. It degrades gracefully instead of crashing, which is exactly why
+    the tests compare against HF token-for-token instead of eyeballing a
+    sample.
     """
     x1, x2 = x.chunk(2, dim=-1)
     return torch.cat((-x2, x1), dim=-1)
@@ -54,7 +55,7 @@ class RotaryEmbedding(nn.Module):
     Built once at startup for max_position_embeddings. A serving engine sees
     arbitrary, non-contiguous positions in a single flat batch (seq A at
     position 3, seq B at position 900), so a gather from a table is the
-    natural op -- computing freqs per step would be both slower and awkward.
+    natural op. Computing freqs per step would be both slower and awkward.
     """
 
     def __init__(self, head_dim: int, theta: float, max_position: int):

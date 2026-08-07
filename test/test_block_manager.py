@@ -12,7 +12,7 @@ Interface under test (from DESIGN.md + design review):
   Manager owns seq_id -> block_table (your design decision #2).
   Invariant: new block allocated when existing token count N % block_size == 0
   (your decision #3). Token count tracking per seq lives in the manager or is
-  passed in — your call, but append_slot() must not need the Sequence object.
+  passed in; either way, append_slot() must not need the Sequence object.
 """
 import pytest
 
