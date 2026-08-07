@@ -42,7 +42,7 @@ class Sequence:
     # re-prefills prompt+outputs on readmission.
     num_computed_tokens: int = 0
 
-    # Metrics (report these in the writeup: TTFT, ITL)
+    # Metrics timestamps; TTFT and ITL are derived from these.
     arrival_time: float = field(default_factory=time.monotonic)
     first_token_time: float | None = None
     finish_time: float | None = None
@@ -63,8 +63,6 @@ class Sequence:
     def last_token(self) -> int:
         return self.output_token_ids[-1] if self.output_token_ids else self.prompt_token_ids[-1]
 
-    # ---------- transitions (scheduler calls these; blocks freed separately) ----------
-
     def on_prefilled(self) -> None:
         self.num_computed_tokens = self.num_tokens
         self.status = SeqStatus.RUNNING
@@ -76,7 +74,7 @@ class Sequence:
         self.num_computed_tokens += 1
 
     def on_preempted(self) -> None:
-        self.num_computed_tokens = 0          # KV is gone; must recompute
+        self.num_computed_tokens = 0
         self.status = SeqStatus.WAITING
 
     def on_finished(self, now: float) -> None:

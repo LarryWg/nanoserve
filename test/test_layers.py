@@ -29,8 +29,6 @@ def _flat_to_hf(x: torch.Tensor) -> torch.Tensor:
     return x.transpose(0, 1).unsqueeze(0)
 
 
-# ---------- RMSNorm ----------
-
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_rmsnorm_matches_hf(dtype):
     torch.manual_seed(0)
@@ -54,8 +52,6 @@ def test_rmsnorm_upcasts_to_fp32():
     exact = ours(x.float()).to(torch.bfloat16)
     assert torch.allclose(ours(x).float(), exact.float(), atol=1e-2)
 
-
-# ---------- RoPE ----------
 
 def _hf_rotary(seq_len):
     cfg = transformers.LlamaConfig(

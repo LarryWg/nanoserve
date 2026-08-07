@@ -1,18 +1,16 @@
-"""Tests for BlockManager. Implement nanoserve/block_manager.py to turn these green.
+"""Tests for BlockManager.
 
-Interface under test (from DESIGN.md + design review):
+Interface under test:
   BlockManager(num_blocks: int, block_size: int)
     .num_free_blocks() -> int
     .blocks_needed(num_tokens: int) -> int
     .can_allocate(num_tokens: int) -> bool
-    .allocate(seq_id: int, num_tokens: int) -> None        # raises OutOfBlocks
-    .append_slot(seq_id: int) -> None                       # raises OutOfBlocks
-    .get_block_table(seq_id: int) -> list[int]              # read-only view
-    .free(seq_id: int) -> None                              # single cleanup path
-  Manager owns seq_id -> block_table (your design decision #2).
-  Invariant: new block allocated when existing token count N % block_size == 0
-  (your decision #3). Token count tracking per seq lives in the manager or is
-  passed in; either way, append_slot() must not need the Sequence object.
+    .allocate(seq_id: int, num_tokens: int) -> None   # raises OutOfBlocks
+    .append_slot(seq_id: int) -> None                 # raises OutOfBlocks
+    .get_block_table(seq_id: int) -> list[int]        # read-only copy
+    .free(seq_id: int) -> None                        # single cleanup path
+The manager owns seq_id -> block_table. Invariant: a new block is allocated
+exactly when the existing token count N satisfies N % block_size == 0.
 """
 import pytest
 
@@ -25,8 +23,6 @@ def mk(num_blocks=8, block_size=BS):
     return BlockManager(num_blocks=num_blocks, block_size=block_size)
 
 
-# ---------- blocks_needed / allocate ----------
-
 def test_blocks_needed_is_ceil_div():
     m = mk()
     assert m.blocks_needed(1) == 1
@@ -35,7 +31,7 @@ def test_blocks_needed_is_ceil_div():
     assert m.blocks_needed(3 * BS) == 3
 
 def test_blocks_needed_zero_tokens():
-    # Decide and pin the semantics: a zero-token allocation is a caller bug.
+    # A zero-token allocation is a caller bug, not a free lunch.
     m = mk()
     with pytest.raises((ValueError, AssertionError)):
         m.blocks_needed(0)
@@ -63,9 +59,9 @@ def test_can_allocate_matches_allocate():
     assert m.can_allocate(2 * BS + 1) is False
 
 
-# ---------- append_slot boundary (design decision #3) ----------
-# Real boundary is prompt-length-relative: prefill via allocate(), then decode
-# steps via append_slot(). Invariant: allocate a new block when N % BS == 0.
+# The append_slot boundary is prompt-length-relative: prefill via allocate(),
+# then decode steps via append_slot(). A new block appears exactly when the
+# token count crosses a multiple of block_size.
 
 def test_decode_after_prompt_bs_minus_1_fills_last_slot_no_alloc():
     m = mk(num_blocks=8)
@@ -93,9 +89,7 @@ def test_append_slot_crossing_boundary_twice():
     m.allocate(1, BS - 1)
     for _ in range(BS + 2):                           # tokens BS .. 2*BS+1
         m.append_slot(1)
-    assert len(m.get_block_table(1)) == 2 + (1 if (2 * BS + 1) % BS else 0) or True
-    # ^ explicit: after 2*BS+1 total tokens we need 3 blocks
-    assert len(m.get_block_table(1)) == 3
+    assert len(m.get_block_table(1)) == 3             # 2*BS+1 tokens need 3 blocks
 
 def test_append_slot_raises_out_of_blocks():
     m = mk(num_blocks=1)
@@ -104,7 +98,8 @@ def test_append_slot_raises_out_of_blocks():
         m.append_slot(1)
 
 
-# ---------- free(): the single cleanup path (design decision #2) ----------
+# free() is the single cleanup path: finish, preemption, and client
+# disconnect all end here.
 
 def test_free_restores_all_blocks():
     m = mk(num_blocks=8)
@@ -121,7 +116,7 @@ def test_free_unknown_seq_raises():
         m.free(999)
 
 def test_double_free_raises():
-    # Silent double-free is the corruption bug your v1 invariant forbids.
+    # A silent double free would hand the same block to two sequences.
     m = mk()
     m.allocate(1, BS)
     m.free(1)
@@ -143,18 +138,15 @@ def test_one_block_one_owner_invariant():
     assert set(m.get_block_table(1)).isdisjoint(m.get_block_table(2))
 
 def test_disconnect_path_is_just_free():
-    # Simulated client disconnect mid-generation: engine calls free(seq_id).
+    # Simulated client disconnect mid-generation: the engine calls free(seq_id).
     m = mk(num_blocks=4)
     m.allocate(1, BS)
-    m.append_slot(1) if False else None               # (not needed; kept simple)
     m.allocate(2, BS)
+    seq2_blocks = m.get_block_table(2)
     m.free(1)                                         # disconnect
     assert m.num_free_blocks() == 3
-    assert set(m.get_block_table(2)) & set() == set() # seq 2 untouched
-    assert len(m.get_block_table(2)) == 1
+    assert m.get_block_table(2) == seq2_blocks        # seq 2 untouched
 
-
-# ---------- global accounting invariant ----------
 
 def test_conservation_of_blocks():
     m = mk(num_blocks=8)
