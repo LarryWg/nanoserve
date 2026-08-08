@@ -52,6 +52,14 @@ message:
 - `test_block_manager.py`: paged KV cache block accounting. Allocation,
   the block boundary off-by-one, freeing, and the "one block, one owner"
   invariant.
+- `test_config.py`: config.json parsing rejects what it cannot compute
+  correctly (missing dtype, sliding window, rope scaling, unknown archs)
+  instead of guessing.
+- `test_weights.py`: the strict safetensors loader's failure paths, pinned
+  with tiny synthetic checkpoints (duplicate keys, tied-head mismatch,
+  missing/unexpected keys).
+- `test_sequence.py`: the sequence lifecycle the scheduler will drive:
+  prefill, decode, preemption, stop conditions.
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token

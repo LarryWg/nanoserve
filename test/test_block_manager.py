@@ -24,7 +24,7 @@ def test_blocks_needed_is_ceil_div():
 def test_blocks_needed_zero_tokens():
     # A zero-token allocation is a caller bug, not a free lunch.
     m = mk()
-    with pytest.raises((ValueError, AssertionError)):
+    with pytest.raises(ValueError):
         m.blocks_needed(0)
 
 def test_allocate_consumes_free_blocks():
@@ -87,6 +87,20 @@ def test_append_slot_raises_out_of_blocks():
     m.allocate(1, BS)
     with pytest.raises(OutOfBlocks):
         m.append_slot(1)
+    # The failed step must leave the sequence untouched.
+    assert m.num_tokens(1) == BS
+    assert len(m.get_block_table(1)) == 1
+
+
+def test_block_size_one_allocates_every_step():
+    # Edge case: every token fills its block, so every append allocates.
+    m = mk(num_blocks=3, block_size=1)
+    m.allocate(1, 2)
+    m.append_slot(1)                              # token 3 -> third block
+    assert len(m.get_block_table(1)) == 3
+    with pytest.raises(OutOfBlocks):
+        m.append_slot(1)
+    assert m.num_tokens(1) == 3
 
 
 def test_free_restores_all_blocks():
