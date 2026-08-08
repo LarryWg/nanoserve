@@ -60,6 +60,8 @@ message:
   missing/unexpected keys).
 - `test_sequence.py`: the sequence lifecycle the scheduler will drive:
   prefill, decode, preemption, stop conditions.
+- `test_scheduler.py`: continuous batching policy. FCFS admission, the
+  token budget, prefill-first vs decode-first, LIFO preemption, and finish.
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token
