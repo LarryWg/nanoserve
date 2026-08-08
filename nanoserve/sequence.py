@@ -47,6 +47,10 @@ class Sequence:
     first_token_time: float | None = None
     finish_time: float | None = None
 
+    def __post_init__(self) -> None:
+        if not self.prompt_token_ids:
+            raise ValueError("prompt_token_ids must not be empty")
+
     @property
     def token_ids(self) -> list[int]:
         """Full context. This is what a (re-)prefill must compute KV for."""
@@ -76,7 +80,8 @@ class Sequence:
 
     def on_preempted(self) -> None:
         self.num_computed_tokens = 0
-        self.status = SeqStatus.WAITING
+        # The scheduler flips this back to WAITING when it re-queues us.
+        self.status = SeqStatus.PREEMPTED
 
     def on_finished(self, now: float) -> None:
         self.finish_time = now

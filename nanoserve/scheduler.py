@@ -64,8 +64,8 @@ class Scheduler:
            len(running) < max_num_seqs); allocate their blocks; return
            a prefill batch.
         2. Else decode: for each running seq, append_slot(). On OutOfBlocks,
-           preempt a victim (free its blocks, push back to waiting) and retry.
-           Return a decode batch of all running seqs.
+           preempt a victim (free its blocks, push it back to waiting with
+           status WAITING) and retry. Return a decode batch of all running.
         3. Return None if nothing to do.
         """
         raise NotImplementedError("implement me")

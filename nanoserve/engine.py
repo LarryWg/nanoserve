@@ -7,9 +7,8 @@ Loop:
         logits = model_runner.forward(batch)
         new_tokens = model_runner.sample(logits, batch)
         for seq, tok in zip(batch.seqs, new_tokens):
-            seq.output_token_ids.append(tok)
-            record first_token_time on the first token (time to first token)
-            if stop condition (eos / max_new_tokens): scheduler.finish(seq)
+            seq.on_token(tok, now)  # appends, counts tokens, stamps TTFT
+            if seq.is_stopped: scheduler.finish(seq)
         stream tokens out to per-request asyncio queues
 
 Serving architecture (one process per GPU when tensor-parallel):

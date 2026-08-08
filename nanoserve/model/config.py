@@ -84,7 +84,22 @@ class ModelConfig:
                 "use a model with plain RoPE (e.g. Qwen3, Qwen2.5, Llama-2)"
             )
 
-        dtype_name = raw.get("torch_dtype") or raw.get("dtype") or "bfloat16"
+        # Qwen2 configs may enable sliding-window attention on some layers,
+        # where HF attends only over the last sliding_window tokens. We do
+        # not implement that, so reject instead of computing full attention.
+        if raw.get("use_sliding_window"):
+            raise ValueError(
+                "sliding-window attention is not implemented; "
+                "use a checkpoint with use_sliding_window=false"
+            )
+
+        # HF treats a missing dtype field as float32. We refuse to guess
+        # instead: a wrong guess would silently cast every weight.
+        dtype_name = raw.get("torch_dtype") or raw.get("dtype")
+        if dtype_name is None:
+            raise ValueError(
+                "config.json has no torch_dtype field; refusing to guess"
+            )
         if dtype_name not in _DTYPES:
             raise ValueError(f"unsupported dtype {dtype_name!r}")
 
