@@ -1,16 +1,7 @@
 """Tests for BlockManager.
 
-Interface under test:
-  BlockManager(num_blocks: int, block_size: int)
-    .num_free_blocks() -> int
-    .blocks_needed(num_tokens: int) -> int
-    .can_allocate(num_tokens: int) -> bool
-    .allocate(seq_id: int, num_tokens: int) -> None   # raises OutOfBlocks
-    .append_slot(seq_id: int) -> None                 # raises OutOfBlocks
-    .get_block_table(seq_id: int) -> list[int]        # read-only copy
-    .free(seq_id: int) -> None                        # single cleanup path
-The manager owns seq_id -> block_table. Invariant: a new block is allocated
-exactly when the existing token count N satisfies N % block_size == 0.
+The invariant pinned throughout: a new block appears exactly when the
+token count crosses a multiple of block_size.
 """
 import pytest
 
@@ -97,9 +88,6 @@ def test_append_slot_raises_out_of_blocks():
     with pytest.raises(OutOfBlocks):
         m.append_slot(1)
 
-
-# free() is the single cleanup path: finish, preemption, and client
-# disconnect all end here.
 
 def test_free_restores_all_blocks():
     m = mk(num_blocks=8)

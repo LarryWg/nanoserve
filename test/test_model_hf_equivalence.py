@@ -4,32 +4,21 @@ Everything downstream (KV cache, scheduler, server) is built on the
 assumption that this model computes exactly what HF computes, so this
 comparison is the gate for the rest of the engine.
 
-Two checkpoints, chosen so every architectural branch in ModelConfig is
-exercised against a real HF model:
+Two checkpoints cover every architectural branch in ModelConfig:
   - Qwen3-0.6B:            qk_norm=True,  attention_bias=False, untied lm_head
   - Qwen2.5-0.5B-Instruct: qk_norm=False, attention_bias=True,  tied lm_head
 
 The gate, per checkpoint:
-  1. logits match HF tightly when both run in fp32 (atol=1e-3, which proves
-     the math is right), and in bf16-as-served the next-token argmax agrees
-     at every prompt position. A raw bf16 logits atol of 1e-2 turns out to
-     be unachievable between ANY two correct implementations: bf16 logits at
-     magnitude ~20-30 have a representable step of ~0.1-0.25, and op
-     ordering differences accumulate to ~1-2 ulp over 28 layers (measured
-     max diff 0.28 on Qwen3-0.6B). The honest bf16 invariant is argmax
-     identity, which is what the decode gate below relies on.
+  1. logits match in fp32 (atol=1e-3 proves the math is right); in bf16 we
+     pin argmax identity instead of a raw-logit atol. See
+     test_logits_match_hf for why bf16 logits cannot be compared tightly.
   2. 50-token greedy decode is identical to HF generate(do_sample=False).
-     min_new_tokens=50 suppresses EOS stopping on the HF side so both
-     loops always run the full 50 steps. repetition_penalty=1.0 is passed
-     explicitly because instruct checkpoints ship a generation_config.json
-     with repetition_penalty 1.1 baked in, and HF applies it EVEN under
-     do_sample=False. Without this, HF is not doing pure greedy and the
-     comparison fails at the first repeated token (this actually happened:
-     Qwen2.5 diverged at token 3, a 1.6-logit gap, so not bf16 noise).
+     repetition_penalty=1.0 is passed explicitly because instruct
+     checkpoints ship a generation_config.json with 1.1 baked in, and HF
+     applies it even under do_sample=False.
 
-Runs on CPU (no GPU on this machine yet); bf16 CPU matmul/SDPA are
-supported in torch 2.13 on Apple Silicon. First run downloads ~2.5 GB
-of checkpoints. Verified with torch 2.13.0, transformers 5.14.1.
+Runs on CPU. First run downloads ~2.5 GB of checkpoints, cached afterwards.
+Verified with torch 2.13.0, transformers 5.14.1.
 """
 import pytest
 import torch

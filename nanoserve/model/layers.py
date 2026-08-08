@@ -65,7 +65,8 @@ class RotaryEmbedding(nn.Module):
         )
         freqs = torch.outer(torch.arange(max_position, dtype=torch.float32), inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)   # duplicated to match _rotate_half
-        # fp32 cache, cast at use: the table is tiny and the angles matter.
+        # fp32 cache, cast at use: the table is tiny, and low-precision
+        # angles visibly shift rotations at large positions.
         self.register_buffer("cos_cache", emb.cos(), persistent=False)
         self.register_buffer("sin_cache", emb.sin(), persistent=False)
 

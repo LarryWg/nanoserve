@@ -1,8 +1,7 @@
 """Continuous batching scheduler.
 
 Each engine step, the scheduler decides which sequences the model runs next.
-That decision is the heart of a serving engine, so this file is meant to be
-written and understood by hand.
+That decision is the heart of a serving engine.
 
 The ideas:
 

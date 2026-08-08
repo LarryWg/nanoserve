@@ -19,10 +19,9 @@ Serving architecture (one process per GPU when tensor-parallel):
 - /v1/completions streams tokens with SSE, OpenAI-compatible enough that
   standard load-test tools work against it.
 
-Tensor parallelism note: rank 0 owns the HTTP server and scheduler and
-broadcasts the batch metadata to the other ranks each step. Every rank runs
-the same forward pass; rank 0 samples and streams. The other ranks just run
-a receive loop.
+Tensor parallelism: see model_runner.py for the sharding plan. Rank 0 owns
+the HTTP server, the scheduler, and this loop; it broadcasts the batch
+metadata each step and the other ranks run a receive loop.
 """
 import threading
 

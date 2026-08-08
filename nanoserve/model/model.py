@@ -199,16 +199,15 @@ class NanoForCausalLM(nn.Module):
     def from_pretrained(cls, model_path: str) -> "NanoForCausalLM":
         """Build from a local HF checkpoint dir and load its weights.
 
-        Construction happens under set_default_dtype(config.dtype) so
-        parameters are born bf16/fp16: load_state_dict copy_()s into the
-        existing parameter dtype, and we want the model to hold the
-        checkpoint's dtype exactly. Comparing our fp32-held weights
-        against HF's bf16 model would pass the atol while testing nothing
-        about bf16 serving numerics. The RoPE cos/sin caches are explicitly
-        fp32 in layers.py and are unaffected by the default dtype, by design.
+        Parameters are created under set_default_dtype(config.dtype) so the
+        model holds the checkpoint's dtype exactly: an fp32-held copy would
+        still pass the HF equivalence tests while testing nothing about bf16
+        serving numerics. The RoPE cos/sin caches stay fp32 (see layers.py),
+        unaffected by the default dtype.
         """
-        from .weights import load_weights  # here, not top: keeps safetensors
-                                           # importable-failure local to loading
+        # Local import so a missing safetensors install only breaks weight
+        # loading, not `import nanoserve.model`.
+        from .weights import load_weights
         config = ModelConfig.from_pretrained(model_path)
         prev = torch.get_default_dtype()
         torch.set_default_dtype(config.dtype)
