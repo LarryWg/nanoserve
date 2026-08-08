@@ -1,7 +1,8 @@
 """Request/sequence lifecycle for the serving engine.
 
 A Sequence is one generation stream. The scheduler moves sequences through:
-WAITING -> RUNNING -> (PREEMPTED -> WAITING) -> FINISHED
+WAITING -> RUNNING -> FINISHED, with preemption sending RUNNING -> PREEMPTED
+(the sequence rejoins the waiting queue and prefills again on readmission).
 
 The Sequence owns token ids and metrics. It does NOT own its block table --
 BlockManager does (keyed by seq_id), so there is exactly one source of truth
@@ -80,7 +81,8 @@ class Sequence:
 
     def on_preempted(self) -> None:
         self.num_computed_tokens = 0
-        # The scheduler flips this back to WAITING when it re-queues us.
+        # Stays PREEMPTED while sitting in the waiting queue, so metrics can
+        # count evictions. The next on_prefilled() makes it RUNNING again.
         self.status = SeqStatus.PREEMPTED
 
     def on_finished(self, now: float) -> None:
