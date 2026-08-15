@@ -8,7 +8,7 @@ honestly against the real thing.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![uv](https://img.shields.io/badge/pkg-uv-purple)
-![tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)
 
 ## Why this exists
 
@@ -17,8 +17,9 @@ the same core ideas at a scale one person can hold in their head:
 
 | Idea | Where it lives |
 | --- | --- |
-| PagedAttention-style KV management | `nanoserve/block_manager.py` |
+| PagedAttention-style KV management | `nanoserve/block_manager.py`, `nanoserve/kv_cache.py` |
 | Iteration-level scheduling (continuous batching) | `nanoserve/scheduler.py` |
+| flash-attn varlen prefill + paged decode | `nanoserve/model/attention.py`, `nanoserve/model_runner.py` |
 | HF-exact model forward pass | `nanoserve/model/` |
 
 Every non-obvious decision is explained in a comment right where it happens,
@@ -37,8 +38,13 @@ uv run pytest -m slow    # adds the HF equivalence suite (downloads ~2.5 GB)
 ```
 
 The slow suite is the heart of the project: it loads real Qwen checkpoints
-and proves nanoserve's forward pass matches HuggingFace **token-for-token**
-in a 50-step greedy decode.
+and proves nanoserve matches HuggingFace **token-for-token** in a 50-step
+greedy decode -- first for the plain forward pass, then again with every
+token after the first served out of the paged KV cache.
+
+The attention kernels are CUDA-only, so the tests that exercise them skip
+themselves on a machine without a GPU. `docs/gpu-setup.md` has the
+flash-attn install (its wheels are pinned to an exact torch version).
 
 ## How a request flows
 
@@ -54,8 +60,13 @@ prompt -> FastAPI -> Scheduler (continuous batching, preemption)
 - [x] Model forward pass verified token-for-token against HuggingFace
       (Qwen3-0.6B, Qwen2.5-0.5B-Instruct, every architectural branch covered)
 - [x] Paged KV block manager with allocation invariants under test
-- [ ] Continuous batching scheduler
-- [ ] KV-cached decode path
+- [x] Continuous batching scheduler: FCFS admission, token budget,
+      recompute preemption
+- [x] Paged KV cache decode: flash-attn varlen prefill, `flash_attn_with_kvcache`
+      decode, KV cache sized from measured free VRAM. Verified token-for-token
+      against HF through the cache, and per step against the no-cache path
+      across block boundaries, batching, and preemption
+- [ ] Streaming server and the engine loop that joins the two
 - [ ] Benchmarks vs HF generate and vLLM
 
 ## Benchmarks
