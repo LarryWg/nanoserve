@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "A readable LLM inference engine: continuous batching, paged KV cache, tensor parallelism"
 requires-python = ">=3.11"
 dependencies = [
-    "torch",
+    # Linux is the GPU platform, and there torch is pinned. flash attn ships
+    # prebuilt wheels built against one exact torch version, and a wheel
+    # built for 2.8 will not import under any other. macOS has no GPU path,
+    # so it takes whatever torch is current.
+    "torch==2.8.0 ; sys_platform == 'linux'",
+    "torch ; sys_platform != 'linux'",
     "transformers",
     "safetensors",
 ]
@@ -13,6 +18,11 @@ dependencies = [
 dev = [
     "pytest",
 ]
+# The paged attention kernels. Linux and CUDA only, and the wheel is built
+# for python 3.12, so anywhere else this group installs nothing.
+gpu = [
+    "flash-attn==2.8.3.post1 ; sys_platform == 'linux' and python_full_version ~= '3.12.0'",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -20,6 +30,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["nanoserve"]
+
+[tool.uv]
+# Both groups are on by default, so plain `uv sync` and `uv run` give a
+# working environment on every machine. On a GPU box that includes the
+# kernels, elsewhere the markers above leave them out.
+default-groups = ["dev", "gpu"]
 
 # PyPI's linux torch wheel targets CUDA 13, which needs a very new NVIDIA
 # driver. On linux pull the cu126 build instead: same torch version, runs on
@@ -31,3 +47,7 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+# flash attn is not on PyPI as a usable wheel, only as a source tarball that
+# takes an hour to build. This is the prebuilt one. The name spells out what
+# it was built against: CUDA 12, torch 2.8, the new C++ ABI, python 3.12.
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post1/flash_attn-2.8.3.post1+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" }

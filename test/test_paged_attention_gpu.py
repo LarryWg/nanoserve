@@ -19,18 +19,19 @@ import json
 import pytest
 import torch
 
-pytest.importorskip("flash_attn", reason="the paged path is flash-attn only")
+if torch.cuda.is_available():
+    # A GPU box without the kernels is a broken environment, not a reason to
+    # skip. Skipping there would let a wrong install pass as a green run.
+    import flash_attn  # noqa: F401
+else:
+    pytest.skip("the paged path is CUDA only", allow_module_level=True)
 
 from nanoserve.model.model import NanoForCausalLM  # noqa: E402
 from nanoserve.model_runner import ModelRunner  # noqa: E402
 from nanoserve.scheduler import Scheduler  # noqa: E402
 from nanoserve.sequence import SamplingParams, SeqStatus, Sequence  # noqa: E402
 
-pytestmark = [
-    pytest.mark.gpu,
-    pytest.mark.skipif(not torch.cuda.is_available(),
-                       reason="paged attention is CUDA only"),
-]
+pytestmark = pytest.mark.gpu
 
 BLOCK_SIZE = 256   # the smallest page the kernel accepts
 

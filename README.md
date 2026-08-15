@@ -42,9 +42,10 @@ and proves nanoserve matches HuggingFace **token-for-token** in a 50-step
 greedy decode -- first for the plain forward pass, then again with every
 token after the first served out of the paged KV cache.
 
-The attention kernels are CUDA-only, so the tests that exercise them skip
-themselves on a machine without a GPU. `docs/gpu-setup.md` has the
-flash-attn install (its wheels are pinned to an exact torch version).
+The attention kernels are CUDA only. On a linux GPU box `uv sync` installs
+them along with everything else; without a GPU the tests that need them skip
+themselves. `docs/gpu-setup.md` explains why torch and the kernel wheel are
+pinned to each other.
 
 ## How a request flows
 

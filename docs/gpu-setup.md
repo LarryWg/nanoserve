@@ -1,47 +1,57 @@
 # Running the paged path on a GPU
 
 Everything except attention runs anywhere, including a laptop CPU. The paged
-KV cache path needs CUDA and flash-attn, which ships as prebuilt wheels
-pinned to an exact torch version.
+KV cache path needs CUDA and flash attn.
 
-## The version pin that matters
+## Setup
 
-flash-attn does not publish a wheel for every torch release, and its CUDA
-extension links against libtorch, so a wheel built for torch 2.8 will not
-import under a different minor version. As of flash-attn 2.8.3.post1 the
-newest torch with a cu12 wheel is **2.8**; `uv.lock` pins torch 2.13 for the
-CPU work, so the GPU box gets its own environment rather than the locked one.
+Same two commands as anywhere else:
 
 ```bash
-uv venv --python 3.12 .venv-gpu
-VIRTUAL_ENV=$PWD/.venv-gpu uv pip install torch==2.8.0 \
-    --index-url https://download.pytorch.org/whl/cu128
-VIRTUAL_ENV=$PWD/.venv-gpu uv pip install transformers safetensors pytest huggingface_hub
-VIRTUAL_ENV=$PWD/.venv-gpu uv pip install \
-  https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3.post1/flash_attn-2.8.3.post1+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+uv sync
+uv run pytest              # fast tests
+uv run pytest -m slow      # adds the HF equivalence gates
 ```
 
-Pick the wheel by four things, all of which must match: python version
-(`cp312`), torch minor (`torch2.8`), CUDA major (`cu12` unless the driver is
-new enough for `cu13`), and the C++ ABI flag
-(`python -c "import torch; print(torch._C._GLIBCXX_USE_CXX11_ABI)"` — True
-means `cxx11abiTRUE`). A mismatch shows up as an undefined-symbol error at
-`import flash_attn`, not as a failed install.
+On a linux box `uv sync` installs the CUDA kernels too. On macOS the markers
+in `pyproject.toml` leave them out. Nothing to remember per machine.
 
-Building from source instead takes upwards of an hour and needs nvcc; the
-wheel is worth the version pin.
-
-## Running the tests
+The pod needs python 3.12, because that is what the prebuilt kernel wheel was
+built for:
 
 ```bash
-.venv-gpu/bin/python -m pytest                 # fast suite, GPU files included
-.venv-gpu/bin/python -m pytest -m slow         # + the HF equivalence gates
+uv sync --python 3.12
 ```
 
-Without CUDA or without flash-attn, `test_paged_attention_gpu.py` and
-`test_paged_decode_hf.py` skip themselves and everything else still runs.
+## Why the versions are pinned
+
+flash attn does not build at install time, it ships prebuilt wheels, and each
+wheel is compiled against one exact torch version. Its CUDA extension links
+against libtorch, so a wheel built for torch 2.8 fails to import under any
+other torch with an undefined symbol error, not a clean message.
+
+So `pyproject.toml` pins four things that have to agree, all of them visible
+in the wheel filename `flash_attn 2.8.3.post1+cu12torch2.8cxx11abiTRUE
+cp312 linux_x86_64`:
+
+| what | value | how to check |
+| --- | --- | --- |
+| python | 3.12 | `uv run python -V` |
+| torch | 2.8 | `uv run python -c "import torch; print(torch.__version__)"` |
+| CUDA major | 12 | `nvidia-smi`, needs a driver that supports it |
+| C++ ABI | true | `uv run python -c "import torch; print(torch._C._GLIBCXX_USE_CXX11_ABI)"` |
+
+To move to a newer torch, find the matching wheel on the flash attn releases
+page and update both the torch pin and the wheel URL together. As of flash
+attn 2.8.3.post1 the newest torch with a CUDA 12 wheel is 2.8.
+
+## When the environment is wrong
+
+The GPU test files import flash attn directly whenever CUDA is present, so a
+half installed environment fails at collection instead of quietly skipping.
+A green run with those files skipped means no GPU, never a bad install.
 
 ## Verified on
 
 - RTX 4090 (sm89, 24 GB), driver 570.195, CUDA 12.8
-- torch 2.8.0+cu128, flash-attn 2.8.3.post1, transformers 5.15.0, python 3.12
+- torch 2.8.0+cu126, flash attn 2.8.3.post1, transformers 5.15.0, python 3.12
