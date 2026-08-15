@@ -86,12 +86,10 @@
     border-radius: 12px;
     padding: 8px;
     background: #fff;
-    transition: transform 0.25s, border-color 0.25s;
   }
   .kblock .bid { font-size: 0.68rem; color: var(--muted); font-family: var(--mono); }
   .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; }
-  .slot { height: 20px; border-radius: 5px; background: #f4efe8; transition: background 0.3s; }
-  .kblock.pulse { border-color: var(--accent); transform: scale(1.04); }
+  .slot { height: 20px; border-radius: 5px; background: #f4efe8; }
   .kv-side { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
   .kv-queue, .kv-running { flex: 1; min-width: 200px; }
   .seqchip {
@@ -106,7 +104,7 @@
   }
   .badge.preempted { background: #fbe3e0; color: #c23b2e; }
   .kv-log {
-    font-size: 0.92rem; background: var(--accent-soft); border-radius: 10px;
+    font-size: 0.92rem; border: 1px solid var(--line); border-radius: 10px;
     padding: 10px 16px; min-height: 44px; margin-top: 14px;
   }
   .kv-stats { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
@@ -127,8 +125,7 @@
   footer a { color: var(--accent); }
 
   details.math {
-    background: #fff;
-    border: 1.5px dashed var(--accent);
+    border: 1px solid var(--line);
     border-radius: 14px;
     padding: 14px 22px;
     margin: 16px 0;
@@ -136,7 +133,6 @@
   details.math summary {
     cursor: pointer;
     font-weight: 600;
-    color: var(--accent);
   }
   details.math p { font-size: 0.95rem; }
 </style>
@@ -478,13 +474,13 @@ document.getElementById("decodeBtn").addEventListener("click", () => {
 // evict the youngest when memory runs out, free everything on finish.
 const BLOCK_SIZE = 4, NUM_BLOCKS = 8;
 const COLORS = ["#e5601d", "#6aa9e8", "#7cc47f", "#c792ea", "#ef9f6c", "#56c2b1"];
-let freeBlocks, seqs, waiting, running, nextSeqId, stepCount, lastPulse;
+let freeBlocks, seqs, waiting, running, nextSeqId, stepCount;
 
 function kvReset() {
   freeBlocks = [];
   for (let b = NUM_BLOCKS - 1; b >= 0; b--) freeBlocks.push(b);
   seqs = []; waiting = []; running = [];
-  nextSeqId = 1; stepCount = 0; lastPulse = new Set();
+  nextSeqId = 1; stepCount = 0;
   kvRender("Add a sequence to begin.");
 }
 
@@ -509,7 +505,7 @@ function addSequence() {
 
 function preempt(victim) {
   running.splice(running.indexOf(victim), 1);
-  victim.blocks.forEach(b => { freeBlocks.push(b); lastPulse.add(b); });
+  victim.blocks.forEach(b => freeBlocks.push(b));
   victim.blocks = [];
   victim.status = "preempted";
   waiting.unshift(victim);
@@ -520,7 +516,6 @@ function preempt(victim) {
 // One scheduler step: prefill if anyone waits and fits, else decode.
 function kvStep() {
   stepCount++;
-  lastPulse = new Set();
   let msg = "";
 
   if (waiting.length) {
@@ -530,11 +525,7 @@ function kvStep() {
       const need = blocksNeeded(s.numTokens);
       if (need > freeBlocks.length) break;                    // strict FCFS
       waiting.shift();
-      for (let i = 0; i < need; i++) {
-        const b = freeBlocks.pop();
-        s.blocks.push(b);
-        lastPulse.add(b);
-      }
+      for (let i = 0; i < need; i++) s.blocks.push(freeBlocks.pop());
       s.status = "running";
       running.push(s);
       admitted.push(s);
@@ -560,9 +551,7 @@ function kvStep() {
         msg = preempt(victim);
         continue;                                             // retry without advancing
       }
-      const b = freeBlocks.pop();
-      s.blocks.push(b);
-      lastPulse.add(b);
+      s.blocks.push(freeBlocks.pop());
     }
     s.numTokens++;
     i++;
@@ -573,7 +562,7 @@ function kvStep() {
   [...running].forEach(s => {
     if (s.numTokens >= s.target) {
       running.splice(running.indexOf(s), 1);
-      s.blocks.forEach(b => { freeBlocks.push(b); lastPulse.add(b); });
+      s.blocks.forEach(b => freeBlocks.push(b));
       s.blocks = [];
       s.status = "finished";
       finished.push(s);
@@ -595,7 +584,7 @@ function kvRender(msg) {
   grid.innerHTML = "";
   for (let b = 0; b < NUM_BLOCKS; b++) {
     const block = document.createElement("div");
-    block.className = "kblock" + (lastPulse.has(b) ? " pulse" : "");
+    block.className = "kblock";
     block.innerHTML = '<span class="bid">block ' + b + "</span>";
     const slots = document.createElement("div");
     slots.className = "slots";
