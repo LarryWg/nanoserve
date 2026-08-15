@@ -1,23 +1,19 @@
 """The model: a dense Llama/Qwen decoder, written to be read.
 
-Our own nn.Module, verified to match transformers token-for-token. It is
-deliberately NOT a serving model yet: there is no KV cache and no batching,
-so generation recomputes the full context every step. That is slow and
-completely fine at test scale (~100 tokens). The attention call is the one
-place that changes when a paged KV cache and varlen kernels arrive;
-everything above and below that call stays as written here.
+Our own nn.Module, verified to match transformers token by token. Only the
+attention call knows whether this is a plain run or a served one. Every
+layer around it stays the same.
 
 Two structural choices, made once and held everywhere:
 
 1. FLAT layout. Activations are [num_tokens, ...] with no batch dim, and
-   positions arrive as an explicit int tensor (see layers.py for why).
-   Only one sequence is ever run here, so positions are arange(T), but
-   the forward signature is already the one a batched engine will use.
+   positions arrive as an explicit int tensor. One sequence uses arange(T).
+   A batched engine packs many sequences into that same flat shape.
 
-2. HF-faithful names. Submodules are named exactly as transformers names
+2. HF faithful names. Submodules are named exactly as transformers names
    them (model.layers.{i}.self_attn.q_proj.weight, ...). That makes weight
    loading a strict load_state_dict instead of a handwritten key mapping.
-   A mapping we wrote ourselves could encode the same misunderstanding as
+   A mapping we wrote ourselves could repeat the same misunderstanding as
    the model and silently "pass". Strictness is the test's best friend.
 """
 from __future__ import annotations
@@ -34,16 +30,13 @@ from .layers import RMSNorm, RotaryEmbedding, apply_rope
 class Attention(nn.Module):
     """GQA self-attention over a flat token stream.
 
-    Two attention paths share one set of projections:
-      - attn_metadata is None: the reference path. One sequence, no KV cache,
-        plain SDPA, runs anywhere including CPU. This is what the HF
-        equivalence tests compare against, so it stays the definition of
-        "correct" and is never allowed to depend on a GPU kernel.
-      - attn_metadata is set: the serving path. flash-attn over the paged KV
-        cache (see attention.py). CUDA only.
-    Everything before the attention call -- projections, qk_norm, RoPE -- is
-    identical in both, which is what makes the paged path testable against
-    the reference one token-for-token.
+    Two attention paths share one set of projections. With no attn_metadata
+    it runs plain SDPA over one sequence with no cache, which works anywhere
+    including CPU and stays our definition of correct. With attn_metadata it
+    runs flash attn over the paged cache, which needs CUDA.
+
+    Projections, qk_norm and RoPE are the same in both paths, so the paged
+    one can be checked against the plain one number by number.
 
     The three architectural ifs in this codebase all live here, driven by
     ModelConfig rather than by arch-name string checks scattered around:
@@ -61,9 +54,8 @@ class Attention(nn.Module):
 
     def __init__(self, config: ModelConfig, layer_idx: int = 0):
         super().__init__()
-        # The layer index is only ever used to pick this layer's slice of the
-        # KV cache. It is not part of the checkpoint, so it stays a plain
-        # attribute and never appears in the state dict.
+        # Only used to pick this layer's slice of the KV cache. It is not a
+        # weight, so it never shows up in the state dict.
         self.layer_idx = layer_idx
         self.num_heads = config.num_attention_heads
         self.num_kv_heads = config.num_key_value_heads
@@ -111,12 +103,12 @@ class Attention(nn.Module):
         return self.o_proj(out.reshape(T, self.num_heads * self.head_dim))
 
     def _sdpa(self, q, k, v) -> torch.Tensor:
-        """Reference attention: one sequence, whole context, no cache.
+        """Plain attention: one sequence, whole context, no cache.
 
-        SDPA wants [heads, T, head_dim]. is_causal=True is exactly the right
-        mask for one sequence with positions 0..T-1; a flat batch packing
-        several sequences would need per-sequence causal masking (that is
-        what the varlen kernel does on the serving path).
+        SDPA wants [heads, T, head_dim]. is_causal=True is the right mask
+        for one sequence at positions 0 to T minus 1. A flat batch holding
+        several sequences would need a mask per sequence instead, which is
+        what the varlen kernel gives us.
         """
         q = q.transpose(0, 1)
         k = k.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
@@ -191,11 +183,11 @@ class NanoForCausalLM(nn.Module):
     compare against transformers' LlamaForCausalLM / Qwen2ForCausalLM /
     Qwen3ForCausalLM.
 
-    forward takes the flat-layout pair (input_ids, positions) and returns
-    logits for EVERY position [T, vocab] by default. A serving prefill wants
-    one position per sequence, so it passes logits_indices and the head runs
-    on those rows only: at 8192 batched tokens and a 151k vocab, the logits
-    nobody reads would be 2.4 GB of bf16.
+    forward takes the flat pair (input_ids, positions) and by default
+    returns logits for EVERY position [T, vocab]. A prefill only needs one
+    position per sequence, so it passes logits_indices and the head runs on
+    those rows alone. At 8192 tokens and a 151k vocab the logits nobody
+    reads would be 2.4 GB.
     """
 
     def __init__(self, config: ModelConfig):

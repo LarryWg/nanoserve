@@ -1,46 +1,33 @@
-"""Model execution: turn a ScheduledBatch into logits, then into tokens.
+"""Model execution: turn a scheduled batch into logits, then into tokens.
 
-The runner owns the physical side of the engine: the weights, the paged KV
-cache, and (because it is the only object that can measure how much VRAM is
-left after the weights load) the BlockManager that hands out block ids for
-that cache. The scheduler is handed `runner.block_manager`; it decides which
-blocks a sequence gets, the runner decides what goes in them.
+The runner owns the weights, the paged KV cache, and the BlockManager for
+that cache. It is the only object that can see how much VRAM is free once
+the weights are loaded, so it sizes the cache and builds the manager. The
+scheduler is handed runner.block_manager and decides who gets which block.
 
-Two kinds of step, one entry point:
-- Prefill: every token of each admitted sequence, packed flat, one
-  flash_attn_varlen_func call per layer, K/V scattered into the cache.
-  Logits come back for the LAST position of each sequence only.
-- Decode: exactly one token per running sequence, gathered through block
-  tables by flash_attn_with_kvcache, which also appends the new K/V.
+A prefill step runs every token of each admitted sequence, packed flat, and
+returns logits for the last position of each one. A decode step runs one
+token per running sequence and reads the rest of the context from the cache.
 
-The contract with the caller (the engine loop, and the tests that stand in
-for it until it exists) is a strict order per step:
+The caller drives one step in this order:
 
-    batch = scheduler.step()      # reserves the KV slot for this step
+    batch = scheduler.step()      # reserves this step's slot
     logits = runner.forward(batch)
     tokens = runner.sample(logits, batch)
-    seq.on_prefilled() / seq.on_token(tok)   # advance the sequence
+    seq.on_prefilled() / seq.on_token(tok)
 
-`Sequence.num_computed_tokens` therefore already counts the token being fed
-when forward runs a decode step. That off-by-one is deliberate (the block
-was reserved before the step) and is where every paged-decode bug hides, so
-it is spelled out again at the point of use in _forward_decode.
+So num_computed_tokens already counts the token being fed when forward runs
+a decode step. That off by one is where paged decode bugs hide, so it is
+spelled out again where it is used.
 
-Tensor parallelism (raw torch.distributed, NCCL backend), still to come:
-- Attention: shard heads across ranks. qkv_proj is column-parallel, o_proj
-  is row-parallel, with one all_reduce after o_proj.
-- MLP: gate/up_proj are column-parallel, down_proj is row-parallel, with
-  one all_reduce after down_proj.
-- Exactly 2 all_reduces per layer. Deriving why on paper before coding is
-  the exercise.
-- Embedding and lm_head: replicate on every rank (fine at this scale;
-  quantify the memory cost when writing it up).
-- Every rank must run the same scheduler decisions: rank 0 schedules and
-  broadcasts the batch metadata each step.
-
-Profiling to capture as you go:
-- Nsight Systems trace showing compute/NCCL overlap (or lack of it)
-- decode step time vs batch size (find where the step goes memory-bound)
+Tensor parallelism is not written yet. The plan, using torch.distributed
+with the NCCL backend:
+  attention shards heads, qkv_proj is column parallel and o_proj is row
+    parallel, with one all_reduce after o_proj
+  the mlp shards the same way, with one all_reduce after down_proj
+  that is two all_reduces per layer, worth deriving on paper first
+  embedding and lm_head are copied on every rank, which is fine at this size
+  rank 0 schedules and broadcasts the batch metadata each step
 """
 from __future__ import annotations
 
@@ -56,7 +43,7 @@ class ModelRunner:
     def __init__(
         self,
         model_path: str,
-        block_size: int = 256,   # the kernel's minimum page; see kv_cache.py
+        block_size: int = 256,   # the smallest page the kernel accepts
         device: str = "cuda",
         gpu_memory_utilization: float = 0.9,
         max_num_batched_tokens: int = 8192,
@@ -65,10 +52,8 @@ class ModelRunner:
         tp_size: int = 1,
     ):
         if tp_size != 1:
-            # TODO (multi-GPU): shard weights at load time based on
-            #   (tp_rank, tp_size); never materialize the full weight on
-            #   every rank. Measuring load time and peak host RAM is a nice
-            #   detail for the writeup.
+            # TODO: shard the weights while loading them, so no rank ever
+            # holds a full one.
             raise NotImplementedError("tensor parallelism is not implemented yet")
         self.tp_rank = tp_rank
         self.tp_size = tp_size
@@ -85,8 +70,6 @@ class ModelRunner:
         self.kv_cache = self._new_cache(num_blocks)
         self.block_manager = BlockManager(num_blocks=num_blocks, block_size=block_size)
 
-    # ---------- setup ----------
-
     def _new_cache(self, num_blocks: int) -> KVCache:
         return KVCache(
             num_layers=self.config.num_hidden_layers,
@@ -99,23 +82,20 @@ class ModelRunner:
         )
 
     def _profile_num_blocks(self, utilization: float) -> int:
-        """How many blocks fit? Measure, do not estimate.
+        """How many blocks fit? Measure it, do not guess it.
 
-        Three things share the GPU: weights (already resident), activations
-        (transient, peaking on the largest prefill the scheduler can send),
-        and the KV cache (whatever is left). Activations are the term nobody
-        can compute on paper for an arbitrary model, so we run one worst-case
-        prefill against a throwaway cache and read the allocator's peak.
+        Three things share the GPU: the weights, the activations, and the
+        cache. Activations peak on the biggest prefill the scheduler can
+        send, and nobody can work that out on paper for any model, so we run
+        one worst case prefill and read the peak from the allocator.
 
-        The two numbers come from different places on purpose: the peak is a
-        torch-allocator number, the free VRAM is a driver number that also
-        sees other processes and the CUDA context. utilization is the margin
-        for everything neither of them models (fragmentation, cuBLAS
-        workspaces), so keep it below 1.0.
+        The peak comes from torch and the free VRAM comes from the driver,
+        and the two do not count quite the same bytes. utilization is the
+        margin for the rest, so keep it under 1.0.
         """
         if self.device.type != "cuda":
             raise ValueError(
-                f"cannot profile VRAM on device {self.device}; "
+                f"cannot profile VRAM on device {self.device}, "
                 "pass num_blocks explicitly for CPU runs"
             )
         tokens = min(self.max_num_batched_tokens, self.config.max_position_embeddings)
@@ -124,8 +104,8 @@ class ModelRunner:
         resident = torch.cuda.memory_allocated(self.device)  # weights + probe
         torch.cuda.reset_peak_memory_stats(self.device)
 
-        # One sequence of `tokens` tokens is the largest prefill the token
-        # budget allows, and the largest activation footprint per step.
+        # One sequence this long is the biggest prefill the budget allows,
+        # so it is also the biggest activation footprint.
         meta = AttentionMetadata(
             is_prefill=True,
             kv_cache=probe,
@@ -163,15 +143,12 @@ class ModelRunner:
             )
         return num_blocks
 
-    # ---------- execution ----------
-
     @torch.inference_mode()
     def forward(self, batch) -> torch.Tensor:
         """Run one step for a ScheduledBatch.
 
-        Returns logits [num_seqs, vocab]: one row per sequence, for the
-        position that sequence is about to sample from. Rows are in
-        batch.seqs order, which is what sample() and the engine rely on.
+        Returns logits [num_seqs, vocab], one row per sequence, for the
+        position it is about to sample from. Rows follow batch.seqs order.
         """
         if batch.is_prefill:
             return self._forward_prefill(batch.seqs)
@@ -183,8 +160,8 @@ class ModelRunner:
         slots: list[int] = []
         cu_seqlens = [0]
         for seq in seqs:
-            # A preempted sequence re-prefills prompt + already-generated
-            # tokens, so this is token_ids, not prompt_token_ids.
+            # An evicted sequence prefills its prompt plus the tokens it
+            # already generated, so this is token_ids.
             tokens = seq.token_ids
             table = self.block_manager.get_block_table(seq.seq_id)
             input_ids.extend(tokens)
@@ -199,8 +176,8 @@ class ModelRunner:
             cu_seqlens=self._tensor(cu_seqlens, torch.int32),
             max_seqlen=max(len(seq.token_ids) for seq in seqs),
         )
-        # cu_seqlens[1:] are the ends of each sequence, so end - 1 is its last
-        # token: the only row the head has to compute (see NanoForCausalLM).
+        # cu_seqlens[1:] holds the end of each sequence, so end minus 1 is
+        # its last token, the only row the head has to compute.
         logits_indices = self._tensor([end - 1 for end in cu_seqlens[1:]], torch.int64)
         return self.model(
             self._tensor(input_ids, torch.int64),
@@ -211,13 +188,11 @@ class ModelRunner:
 
     def _forward_decode(self, seqs) -> torch.Tensor:
         input_ids: list[int] = []
-        # num_computed_tokens already counts the token this step feeds: the
-        # scheduler reserved its KV slot before calling us. So for a sequence
-        # with n computed tokens, exactly n - 1 tokens are already cached,
-        # and the new token sits at position n - 1 -- a count and a
-        # 0-indexed position that happen to be the same integer. One list
-        # serves as both, which is safe precisely because the engine
-        # reserves the slot before the step and fills it during it.
+        # num_computed_tokens already counts the token this step feeds,
+        # because the scheduler reserved its slot before calling us. So a
+        # sequence with n computed tokens has n minus 1 tokens cached, and
+        # feeds a token sitting at position n minus 1. A count and a
+        # position that happen to be the same number, so one list does both.
         cached_lens: list[int] = []
         tables: list[list[int]] = []
         for seq in seqs:
@@ -232,20 +207,17 @@ class ModelRunner:
             block_tables=self._tensor(pad_block_tables(tables), torch.int32),
             cache_seqlens=self._tensor(cached_lens, torch.int32),
         )
-        # Every decode token IS a last position, so no logits_indices.
+        # Every decode token is already a last position, so no indices.
         return self.model(self._tensor(input_ids, torch.int64), positions, meta)
 
     def _tensor(self, data, dtype: torch.dtype) -> torch.Tensor:
-        """Build step metadata host-side, then move it in one copy.
+        """Build the step metadata on the host, then move it in one copy.
 
-        Per-sequence tensor construction would mean dozens of tiny H2D
-        transfers per step, each with its own launch latency. Whether this
-        shows up at all is a profiling question; the shape of the answer is
-        pinned host buffers, and this is where that change would land.
+        Building a tensor per sequence would mean dozens of tiny transfers
+        per step. If profiling ever says this matters, pinned host buffers
+        would go here.
         """
         return torch.tensor(list(data), dtype=dtype, device=self.device)
-
-    # ---------- sampling ----------
 
     def sample(self, logits: torch.Tensor, batch) -> list[int]:
         """Pick one token per sequence, in batch.seqs order."""
@@ -261,18 +233,17 @@ def sample_tokens(
     temperatures: torch.Tensor,  # [num_seqs]
     top_p: torch.Tensor,         # [num_seqs]
 ) -> torch.Tensor:               # [num_seqs] int64
-    """Temperature + top-p sampling for a whole batch at once.
+    """Temperature and top p sampling for a whole batch at once.
 
-    Sampling params are per request, so temperature and top_p are vectors,
-    not scalars, and the batch goes through one set of kernels.
-    temperature == 0 means greedy; those rows still ride along through the
-    softmax (a clamped temperature keeps it finite) and are overwritten with
-    their argmax at the end. Branching per row would mean a Python loop over
-    the batch, which costs more than the arithmetic it saves.
+    Every request brings its own settings, so temperature and top_p are
+    vectors and the batch goes through one set of kernels. A temperature of
+    0 means greedy. Those rows still ride through the softmax (clamping
+    keeps it finite) and get their argmax back at the end. Branching per row
+    would mean a Python loop, which costs more than the maths it saves.
 
-    fp32 throughout: sampling reads probability ratios, and bf16 rounding
-    at the tail of a 150k-entry distribution is not a rounding error there,
-    it is a different distribution.
+    All of it in fp32. Sampling compares probabilities, and bf16 rounding in
+    the tail of a 150k word vocabulary is a different distribution, not a
+    rounding error.
     """
     logits = logits.float()
     greedy_ids = logits.argmax(dim=-1)
@@ -289,12 +260,11 @@ def sample_tokens(
 
 
 def _top_p_filter(probs: torch.Tensor, top_p: torch.Tensor) -> torch.Tensor:
-    """Zero every token outside the smallest set whose mass reaches top_p.
+    """Zero every token outside the smallest set that reaches top_p.
 
-    The mask compares the cumulative mass BEFORE each token against top_p,
-    so the token that crosses the threshold is kept. Dropping it instead
-    would make top_p slightly smaller than asked, and would zero the whole
-    row whenever one token already carries more than top_p of the mass.
+    The mask compares the mass BEFORE each token against top_p, so the token
+    that crosses the line is kept. Dropping it would zero the whole row
+    whenever one token already carries more than top_p on its own.
     """
     sorted_probs, sorted_ids = probs.sort(dim=-1, descending=True)
     mass_before = sorted_probs.cumsum(dim=-1) - sorted_probs

@@ -1,21 +1,18 @@
-"""The paged attention path must compute what the reference path computes.
+"""The paged path must compute what the plain path computes.
 
-The reference is the SDPA, no-cache, one-sequence-at-a-time path in
-model.py -- the one the HF equivalence tests already pinned token-for-token.
-So this suite never asks "does the engine produce good text"; it asks "does
-the engine produce the SAME numbers as the implementation we already trust",
-step by step, with the KV cache and the block tables in the way.
+The plain path runs one sequence with no cache, and it is already checked
+against transformers token by token. So these tests never ask whether the
+output reads well. They ask whether it holds the same numbers, step by
+step, with the cache and the block tables in the way.
 
-Every test drives the real Scheduler and the real BlockManager, because the
-bugs worth catching live in the seams between them: an off-by-one in
-cache_seqlens, a block table read before the slot was reserved, a sequence
-whose re-prefill after preemption lands in different blocks.
+Every test drives the real scheduler and block manager, because the bugs
+worth catching live between them: an off by one in cache_seqlens, a block
+table read before its slot was reserved, an evicted sequence that comes
+back in different blocks.
 
-A tiny randomly-initialized model stands in for a checkpoint: 2 layers, 4
-query heads over 2 KV heads, head_dim 32, vocab 256. It exercises every
-branch of the paged path (GQA, block boundaries, batching) in milliseconds
-and needs no download. test_paged_decode_hf.py runs the same machinery
-against a real Qwen3 checkpoint and HF's own generate.
+A tiny random model stands in for a checkpoint: 2 layers, 4 query heads
+over 2 key heads, head_dim 32, vocab 256. It covers GQA, block edges and
+batching in milliseconds, and needs no download.
 """
 import json
 
@@ -35,17 +32,13 @@ pytestmark = [
                        reason="paged attention is CUDA only"),
 ]
 
-BLOCK_SIZE = 256   # flash-attn's minimum page size (see kv_cache.py)
+BLOCK_SIZE = 256   # the smallest page the kernel accepts
 
-# Measured on this model (RTX 4090, fp16, flash-attn 2.8.3): max
-# |paged - reference| is 9.8e-4 on both prefill and decode logits, at logit
-# magnitudes around 1.5. That is flash-attn accumulating in a different
-# order than SDPA, i.e. one fp16 ulp, not a disagreement about the math.
-# The bound below leaves 5x headroom so a real bug -- which shifts logits by
-# whole units, not ulps -- fails loudly. rtol is 0 on purpose: a relative
-# tolerance on logits near zero would hide exactly the small, systematic
-# drift a stale cache entry produces. The assertion that actually decides
-# the test is argmax equality, checked alongside.
+# Measured on this model (RTX 4090, fp16): the two paths differ by at most
+# 9.8e-4 on logits of size 1.5, which is one fp16 step. That is the kernel
+# adding numbers in a different order, not a different answer. The bound
+# leaves 5x room, since a real bug moves logits by whole units. rtol stays
+# 0, so small steady drift near zero cannot hide.
 ATOL = 5e-3
 RTOL = 0.0
 
@@ -54,7 +47,7 @@ TINY_CONFIG = {
     "intermediate_size": 256,
     "num_hidden_layers": 2,
     "num_attention_heads": 4,
-    "num_key_value_heads": 2,     # GQA: 2 query heads per KV head
+    "num_key_value_heads": 2,     # GQA, 2 query heads per key head
     "head_dim": 32,
     "vocab_size": 256,
     "rms_norm_eps": 1e-6,
@@ -67,12 +60,11 @@ TINY_CONFIG = {
 
 @pytest.fixture(scope="session", params=["Qwen3ForCausalLM", "Qwen2ForCausalLM"])
 def checkpoint(request, tmp_path_factory):
-    """A tiny random checkpoint on disk, one per architecture branch.
+    """A tiny random checkpoint on disk, one per architecture.
 
-    Both branches matter to the paged path: Qwen3 applies qk_norm before
-    RoPE, Qwen2 carries a bias on q/k/v_proj. Going through a real
-    safetensors dir (rather than handing the runner a live nn.Module) also
-    keeps ModelRunner's only entry point the one production uses.
+    Both matter here. Qwen3 norms q and k before RoPE, Qwen2 carries a bias
+    on the projections. Writing a real checkpoint also means the runner is
+    loaded the same way a server would load it.
     """
     from safetensors.torch import save_file
 
@@ -106,8 +98,7 @@ def make_runner(checkpoint):
 
 
 def make_seq(seq_id: int, num_tokens: int, max_new_tokens: int = 256) -> Sequence:
-    # Token ids are arbitrary but deterministic, and greedy sampling keeps
-    # the whole test deterministic from here on.
+    # Any token ids will do, as long as they are the same every run.
     torch.manual_seed(seq_id)
     ids = torch.randint(0, TINY_CONFIG["vocab_size"], (num_tokens,)).tolist()
     return Sequence(
@@ -118,7 +109,7 @@ def make_seq(seq_id: int, num_tokens: int, max_new_tokens: int = 256) -> Sequenc
 
 
 def reference_logits(model, token_ids: list[int]) -> torch.Tensor:
-    """The trusted path: whole context, no cache, plain SDPA."""
+    """The trusted path: whole context, no cache."""
     ids = torch.tensor(token_ids, device="cuda")
     with torch.inference_mode():
         out = model(ids, torch.arange(len(token_ids), device="cuda"))
@@ -126,12 +117,11 @@ def reference_logits(model, token_ids: list[int]) -> torch.Tensor:
 
 
 def run_step(runner, scheduler):
-    """One engine step, checked against the reference before it is taken.
+    """One engine step, checked before it is taken.
 
-    Whatever the batch is, each sequence's logits must match recomputing
-    that sequence's whole context from scratch. For a prefill that is
-    trivially the same computation; for a decode it means the cache holds
-    exactly the KV the reference would have recomputed.
+    Whatever the batch holds, each sequence's logits must match redoing its
+    whole context from scratch. For a decode that means the cache holds
+    exactly the keys and values the plain path would have recomputed.
     """
     batch = scheduler.step()
     assert batch is not None, "scheduler ran out of work mid-test"
@@ -171,7 +161,7 @@ def test_prefill_matches_reference_at_every_block_boundary(make_runner, prompt_l
 
 
 def test_prefill_writes_kv_for_every_prompt_token(make_runner):
-    """The cache must hold the prompt's KV, in the sequence's own blocks."""
+    """The prompt's keys and values land in this sequence's own blocks."""
     runner = make_runner()
     scheduler = Scheduler(block_manager=runner.block_manager)
     seq = make_seq(1, BLOCK_SIZE + 3)
@@ -192,26 +182,27 @@ def test_prefill_writes_kv_for_every_prompt_token(make_runner):
     "prompt_len", [BLOCK_SIZE - 1, BLOCK_SIZE, BLOCK_SIZE + 1], ids=lambda n: f"{n}tok"
 )
 def test_decode_tracks_the_reference_across_block_boundaries(make_runner, prompt_len):
-    """The M2 gate at tiny scale: prefill, then decode past a block edge.
+    """Prefill, then decode past the edge of a block.
 
-    Each prompt length puts the first generated token at a different offset
-    in its block, so between them the three interesting cases (block fills
-    exactly, block fills mid-decode, block was already full) are all hit.
+    Each prompt length drops the first new token at a different offset, so
+    together they cover a block that fills exactly, one that fills while
+    decoding, and one that was already full.
     """
     runner = make_runner()
     scheduler = Scheduler(block_manager=runner.block_manager)
     scheduler.add_request(make_seq(1, prompt_len))
-    # Four steps is enough: at prompt_len == BLOCK_SIZE the very first decode
-    # opens a new block, at BLOCK_SIZE - 1 the second one does, and at
-    # BLOCK_SIZE + 1 the tokens land in a block the prefill already opened.
+    # Four steps is enough. One prompt opens a new block on the first
+    # decode, one on the second, one writes into a block prefill opened.
     for _ in range(4):
         run_step(runner, scheduler)
 
 
 def test_batched_steps_match_running_each_sequence_alone(make_runner):
-    """Sequences of different lengths sharing a step must not leak into
-    each other: that is what cu_seqlens (prefill) and per-row cache_seqlens
-    with block tables (decode) exist to prevent."""
+    """Sequences of different lengths must not leak into each other.
+
+    Stopping that is the whole job of cu_seqlens during prefill, and of the
+    block tables and cache_seqlens during decode.
+    """
     runner = make_runner()
     scheduler = Scheduler(block_manager=runner.block_manager)
     for seq_id, length in enumerate([BLOCK_SIZE + 1, 3, 2 * BLOCK_SIZE], start=1):
@@ -225,8 +216,8 @@ def test_batched_steps_match_running_each_sequence_alone(make_runner):
 
 
 def test_a_late_arrival_joins_running_sequences(make_runner):
-    """Continuous batching in miniature: a request admitted while another
-    is mid-decode shares the cache without disturbing it."""
+    """Continuous batching in miniature. A request that arrives while
+    another is decoding shares the cache without disturbing it."""
     runner = make_runner()
     scheduler = Scheduler(block_manager=runner.block_manager)
     scheduler.add_request(make_seq(1, BLOCK_SIZE + 2))
@@ -242,17 +233,15 @@ def test_a_late_arrival_joins_running_sequences(make_runner):
 # ---------- preemption ----------
 
 def test_a_preempted_sequence_resumes_where_it_left_off(make_runner):
-    """Recompute preemption is only free if the recompute is exact.
+    """Throwing work away is only free if redoing it is exact.
 
-    Three blocks, two sequences that each fill one: the cache runs out on
-    the first decode step, the youngest sequence is evicted, and its blocks
-    go back to the free list. It waits until the other sequence finishes,
-    then re-prefills its whole context -- prompt plus the token it had
-    already generated -- into DIFFERENT physical blocks and carries on.
+    Three blocks, two sequences that each fill one. The cache runs out on
+    the first decode, so the youngest sequence is evicted and its blocks go
+    back. It waits for the other to finish, then prefills its whole context
+    again, prompt plus the token it had already made, into different blocks.
 
-    Every step of both sequences is checked against the reference, so a
-    re-prefill that landed in the wrong slots, or a resumed sequence that
-    lost its generated token, fails on the very next logits.
+    Both sequences are checked at every step, so blocks filled in the wrong
+    order, or a resumed sequence that lost a token, fail on the next logits.
     """
     runner = make_runner(num_blocks=3)
     scheduler = Scheduler(block_manager=runner.block_manager)
@@ -262,14 +251,14 @@ def test_a_preempted_sequence_resumes_where_it_left_off(make_runner):
     scheduler.add_request(victim)
 
     run_step(runner, scheduler)                     # prefill both
-    run_step(runner, scheduler)                     # decode: victim is evicted
+    run_step(runner, scheduler)                     # decode, victim evicted
     assert victim.status is SeqStatus.PREEMPTED
-    assert victim.num_computed_tokens == 0          # KV gone
-    assert victim.num_tokens == BLOCK_SIZE + 1      # token kept
+    assert victim.num_computed_tokens == 0          # cache gone
+    assert victim.num_tokens == BLOCK_SIZE + 1      # tokens kept
     assert scheduler.running == [hog]
 
     while victim.status is not SeqStatus.FINISHED:
-        run_step(runner, scheduler)                 # hog finishes, victim resumes
+        run_step(runner, scheduler)                 # hog ends, victim resumes
     assert len(victim.output_token_ids) == 6
     assert runner.block_manager.num_free_blocks() == 3   # nothing leaked
 
@@ -277,10 +266,10 @@ def test_a_preempted_sequence_resumes_where_it_left_off(make_runner):
 # ---------- cache sizing ----------
 
 def test_vram_profiling_sizes_the_cache_to_what_is_free(make_runner, checkpoint):
-    """num_blocks is measured, not guessed (see ModelRunner._profile_num_blocks).
+    """num_blocks is measured, not guessed.
 
-    Half the card at most, so the assertion is about the arithmetic rather
-    than about how much VRAM the test machine happens to have.
+    Half the card at most, so the check is about the maths and not about
+    how much memory this machine happens to have.
     """
     runner = ModelRunner(
         str(checkpoint),
@@ -292,7 +281,7 @@ def test_vram_profiling_sizes_the_cache_to_what_is_free(make_runner, checkpoint)
     total = torch.cuda.get_device_properties(0).total_memory
     assert runner.block_manager.num_blocks > 0
     assert runner.kv_cache.nbytes() < 0.5 * total
-    # The cache the manager hands out ids for is the cache that exists.
+    # The manager hands out ids for the cache that actually exists.
     assert runner.kv_cache.num_blocks == runner.block_manager.num_blocks
 
     scheduler = Scheduler(block_manager=runner.block_manager)

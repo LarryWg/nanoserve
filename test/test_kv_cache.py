@@ -1,10 +1,10 @@
-"""KV cache tests: the address arithmetic, on CPU.
+"""KV cache tests: the address maths, on CPU.
 
-Nothing here needs a GPU or flash-attn. The cache is just tensors plus the
-map from (sequence, position) to a slot in them, and that map is where a
-paged engine silently corrupts itself: a wrong slot writes real K/V into
-someone else's context and the model keeps generating fluent text. So the
-mapping gets tested on its own, away from any kernel.
+Nothing here needs a GPU. The cache is tensors plus the map from a token
+position to a slot in them, and that map is where a paged engine quietly
+breaks. A wrong slot writes real keys and values into someone else's
+context, and the model keeps producing fluent text. So the map is tested
+on its own, away from any kernel.
 """
 import pytest
 import torch
@@ -16,7 +16,7 @@ from nanoserve.kv_cache import (
     slot_mapping,
 )
 
-BS = 256  # block size == the kernel's page size (see kv_cache.py)
+BS = 256  # block size, which is also the kernel's page size
 
 
 def make_cache(num_layers=2, num_blocks=4, num_kv_heads=2, head_dim=8):
@@ -34,8 +34,8 @@ def make_cache(num_layers=2, num_blocks=4, num_kv_heads=2, head_dim=8):
 # ---------- slot arithmetic ----------
 
 def test_slot_mapping_follows_the_block_table():
-    # Physical blocks are handed out in whatever order the free list had
-    # them, so the mapping must never assume 7 comes after 3.
+    # Blocks come off the free list in any order, so the map must never
+    # assume 7 follows 3.
     table = [3, 7]
     slots = slot_mapping(table, range(BS + 2), BS)
     assert slots[0] == 3 * BS
@@ -61,7 +61,7 @@ def test_pad_block_tables_leaves_equal_length_tables_alone():
 
 
 def test_bytes_per_block_counts_k_and_v_in_every_layer():
-    # 2 (K and V) * 4 layers * BS tokens * 2 heads * 8 dims * 2 bytes
+    # keys and values, 4 layers, BS tokens, 2 heads, 8 dims, 2 bytes
     assert bytes_per_block(4, BS, 2, 8, torch.bfloat16) == 2 * 4 * BS * 2 * 8 * 2
 
 
@@ -73,8 +73,8 @@ def test_block_size_must_suit_the_paged_kernel():
 
 
 def test_cache_starts_zeroed():
-    # Uninitialized memory would reach the kernel as NaNs in the padding
-    # lanes of a partly filled block.
+    # Junk memory would reach the kernel as NaNs in the empty slots of a
+    # half full block.
     cache = make_cache()
     assert not cache.k.any()
     assert not cache.v.any()
@@ -91,8 +91,7 @@ def test_store_writes_exactly_the_mapped_slots():
     k_cache, v_cache = cache.layer(1)
     assert torch.equal(k_cache[2, :3], k)
     assert torch.equal(v_cache[2, :3], v)
-    # The rest of the block, the other blocks, and every other layer are
-    # untouched.
+    # The rest of the block, other blocks, and other layers stay empty.
     assert not k_cache[2, 3:].any()
     assert not k_cache[[0, 1, 3]].any()
     assert not cache.layer(0)[0].any()
@@ -108,7 +107,7 @@ def test_store_handles_a_block_boundary():
 
     k_cache, _ = cache.layer(0)
     assert torch.equal(k_cache[0], k[:BS])       # first block filled
-    assert torch.equal(k_cache[3, 0], k[BS])     # spill lands in block 3
+    assert torch.equal(k_cache[3, 0], k[BS])     # the extra token goes here
     assert not k_cache[3, 1:].any()
 
 

@@ -1,29 +1,21 @@
-"""The serving attention path: flash-attn over a paged KV cache.
+"""Attention over the paged KV cache, using flash attn.
 
-Attention is the only place in the model that a serving engine changes.
-Everything else (norms, RoPE, MLP, residuals) is per-token math and does not
-care that several sequences share the step. Attention does: it has to know
-where one sequence's tokens end and the next one's begin, and where the KV
-of tokens computed on earlier steps lives.
+Attention is the only layer a serving engine has to change. Every other
+layer works one token at a time and does not care that several sequences
+share the step. Attention cares: it has to know where one sequence stops
+and the next starts, and where the keys and values from earlier steps live.
 
-Two kernels cover the two kinds of step:
+Prefill uses flash_attn_varlen_func. Our activations are already flat, and
+cu_seqlens (0, len_a, len_a + len_b, ...) marks the boundaries so each
+sequence gets its own causal mask. Keys and values are also written to the
+cache here, because the decode steps that follow read them from there.
 
-- Prefill: flash_attn_varlen_func. Our activations are already flat
-  [num_tokens, ...], which is exactly what varlen wants; cu_seqlens (the
-  cumulative token counts, [0, len_a, len_a+len_b, ...]) tells the kernel
-  the boundaries so causal masking is applied per sequence rather than
-  across the whole flat batch. K/V are also scattered into the paged cache
-  here, because the decode steps that follow will read them from there.
+Decode uses flash_attn_with_kvcache with a block table. One query token per
+sequence attends over that sequence's cached context. The same call stores
+the new key and value, so decode needs no separate write.
 
-- Decode: flash_attn_with_kvcache with a block table. One query token per
-  sequence attends over that sequence's whole cached context, gathered
-  through its blocks. The same kernel call also writes the new token's K/V
-  into the cache at index cache_seqlens, so decode never needs a separate
-  scatter.
-
-GQA is handed to the kernel as-is: flash-attn accepts num_heads_q being a
-multiple of num_heads_k and broadcasts internally. The repeat_interleave
-the reference SDPA path needs (see model.py) would be pure waste here.
+GQA goes straight to the kernel. It accepts more query heads than key heads
+and broadcasts them itself.
 """
 from __future__ import annotations
 
@@ -33,24 +25,23 @@ import torch
 
 from ..kv_cache import KVCache
 
-try:  # only the paged path needs flash-attn, and it is CUDA-only
+try:  # the paged path needs flash attn, which is CUDA only
     from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
-except ImportError:  # pragma: no cover - exercised by the import error below
+except ImportError:  # pragma: no cover
     flash_attn_varlen_func = None
     flash_attn_with_kvcache = None
 
 _MISSING = (
-    "flash-attn is required for the paged attention path. It ships as "
-    "CUDA-only prebuilt wheels; see docs/gpu-setup.md. The reference SDPA "
-    "path (attn_metadata=None) runs without it."
+    "flash attn is required for the paged attention path and is CUDA only. "
+    "The plain path (attn_metadata=None) runs without it."
 )
 
 
 @dataclass(frozen=True)
 class AttentionMetadata:
-    """Everything attention needs about the step that the layers themselves
-    cannot know. Built once per forward by ModelRunner and passed down
-    unchanged; every layer reads the same object.
+    """What attention needs to know about this step.
+
+    Built once per forward and read unchanged by every layer.
     """
 
     is_prefill: bool
@@ -81,9 +72,9 @@ def paged_attention(
 
 
 def _prefill(q, k, v, layer_idx, meta):
-    # Write first, then attend. The order does not matter for correctness
-    # (varlen reads the tensors we pass, not the cache), but writing here
-    # keeps "KV for computed tokens is in the cache" true on every exit path.
+    # Store first, then attend. The result is the same either way, but this
+    # order keeps one rule true everywhere: if a token is computed, its keys
+    # and values are in the cache.
     meta.kv_cache.store(layer_idx, k, v, meta.slot_mapping)
     return flash_attn_varlen_func(
         q,
@@ -99,9 +90,9 @@ def _prefill(q, k, v, layer_idx, meta):
 
 def _decode(q, k, v, layer_idx, meta):
     k_cache, v_cache = meta.kv_cache.layer(layer_idx)
-    # The kernel is written for [batch, seqlen, heads, dim]; a decode step is
-    # exactly one query token per sequence, so seqlen is 1 and the flat batch
-    # of tokens IS the batch of sequences.
+    # The kernel wants [batch, seqlen, heads, dim]. A decode step is one
+    # query token per sequence, so seqlen is 1 and our flat batch of tokens
+    # is the batch of sequences.
     out = flash_attn_with_kvcache(
         q.unsqueeze(1),
         k_cache,
