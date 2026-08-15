@@ -196,7 +196,7 @@ class NanoForCausalLM(nn.Module):
         return F.linear(hidden, weight)
 
     @classmethod
-    def from_pretrained(cls, model_path: str) -> "NanoForCausalLM":
+    def from_pretrained(cls, model_path: str, device: str = "cpu") -> "NanoForCausalLM":
         """Build from a local HF checkpoint dir and load its weights.
 
         Parameters are created under set_default_dtype(config.dtype) so the
@@ -204,7 +204,13 @@ class NanoForCausalLM(nn.Module):
         still pass the HF equivalence tests while testing nothing about bf16
         serving numerics. The RoPE cos/sin caches stay fp32 (see layers.py),
         unaffected by the default dtype.
+
+        The model is moved to `device` before loading, so load_state_dict
+        copies safetensors CPU bytes straight into the destination
+        parameters. No double host allocation when `device` is a GPU.
         """
+        if device.startswith("cuda") and not torch.cuda.is_available():
+            raise ValueError(f"device={device!r} but CUDA is not available")
         # Local import so a missing safetensors install only breaks weight
         # loading, not `import nanoserve.model`.
         from .weights import load_weights
@@ -215,5 +221,6 @@ class NanoForCausalLM(nn.Module):
             model = cls(config)
         finally:
             torch.set_default_dtype(prev)
+        model = model.to(device)
         load_weights(model, model_path)
         return model
