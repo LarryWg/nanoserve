@@ -26,12 +26,24 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from .attention import AttentionMetadata, paged_attention
 from .config import ModelConfig
 from .layers import RMSNorm, RotaryEmbedding, apply_rope
 
 
 class Attention(nn.Module):
     """GQA self-attention over a flat token stream.
+
+    Two attention paths share one set of projections:
+      - attn_metadata is None: the reference path. One sequence, no KV cache,
+        plain SDPA, runs anywhere including CPU. This is what the HF
+        equivalence tests compare against, so it stays the definition of
+        "correct" and is never allowed to depend on a GPU kernel.
+      - attn_metadata is set: the serving path. flash-attn over the paged KV
+        cache (see attention.py). CUDA only.
+    Everything before the attention call -- projections, qk_norm, RoPE -- is
+    identical in both, which is what makes the paged path testable against
+    the reference one token-for-token.
 
     The three architectural ifs in this codebase all live here, driven by
     ModelConfig rather than by arch-name string checks scattered around:
@@ -47,8 +59,12 @@ class Attention(nn.Module):
         then.
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, layer_idx: int = 0):
         super().__init__()
+        # The layer index is only ever used to pick this layer's slice of the
+        # KV cache. It is not part of the checkpoint, so it stays a plain
+        # attribute and never appears in the state dict.
+        self.layer_idx = layer_idx
         self.num_heads = config.num_attention_heads
         self.num_kv_heads = config.num_key_value_heads
         self.head_dim = config.head_dim
@@ -75,6 +91,7 @@ class Attention(nn.Module):
         x: torch.Tensor,          # [T, hidden]
         cos: torch.Tensor,        # [T, head_dim]
         sin: torch.Tensor,        # [T, head_dim]
+        attn_metadata: AttentionMetadata | None = None,
     ) -> torch.Tensor:
         T = x.shape[0]
         q = self.q_proj(x).view(T, self.num_heads, self.head_dim)
@@ -87,17 +104,25 @@ class Attention(nn.Module):
 
         q, k = apply_rope(q, k, cos, sin)
 
-        # SDPA wants [heads, T, head_dim]. is_causal=True is exactly the
-        # right mask for one sequence with positions 0..T-1; a flat batch
-        # packing several sequences would need per-sequence causal masking
-        # (e.g. a varlen kernel) instead.
+        if attn_metadata is None:
+            out = self._sdpa(q, k, v)
+        else:
+            out = paged_attention(q, k, v, self.layer_idx, attn_metadata)
+        return self.o_proj(out.reshape(T, self.num_heads * self.head_dim))
+
+    def _sdpa(self, q, k, v) -> torch.Tensor:
+        """Reference attention: one sequence, whole context, no cache.
+
+        SDPA wants [heads, T, head_dim]. is_causal=True is exactly the right
+        mask for one sequence with positions 0..T-1; a flat batch packing
+        several sequences would need per-sequence causal masking (that is
+        what the varlen kernel does on the serving path).
+        """
         q = q.transpose(0, 1)
         k = k.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
         v = v.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
-
         out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-        out = out.transpose(0, 1).reshape(T, self.num_heads * self.head_dim)
-        return self.o_proj(out)
+        return out.transpose(0, 1)
 
 
 class MLP(nn.Module):
@@ -121,16 +146,16 @@ class DecoderLayer(nn.Module):
     post_attention_layernorm, mlp) so checkpoints load strictly.
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, layer_idx: int = 0):
         super().__init__()
-        self.self_attn = Attention(config)
+        self.self_attn = Attention(config, layer_idx)
         self.mlp = MLP(config)
         self.input_layernorm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.hidden_size,
                                                 config.rms_norm_eps)
 
-    def forward(self, x, cos, sin):
-        x = x + self.self_attn(self.input_layernorm(x), cos, sin)
+    def forward(self, x, cos, sin, attn_metadata=None):
+        x = x + self.self_attn(self.input_layernorm(x), cos, sin, attn_metadata)
         x = x + self.mlp(self.post_attention_layernorm(x))
         return x
 
@@ -146,18 +171,18 @@ class NanoModel(nn.Module):
         super().__init__()
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
         self.layers = nn.ModuleList(
-            DecoderLayer(config) for _ in range(config.num_hidden_layers)
+            DecoderLayer(config, i) for i in range(config.num_hidden_layers)
         )
         self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         self.rotary_emb = RotaryEmbedding(
             config.head_dim, config.rope_theta, config.max_position_embeddings
         )
 
-    def forward(self, input_ids: torch.Tensor, positions: torch.Tensor):
+    def forward(self, input_ids, positions, attn_metadata=None):
         x = self.embed_tokens(input_ids)
         cos, sin = self.rotary_emb(positions)
         for layer in self.layers:
-            x = layer(x, cos, sin)
+            x = layer(x, cos, sin, attn_metadata)
         return self.norm(x)
 
 
@@ -167,9 +192,10 @@ class NanoForCausalLM(nn.Module):
     Qwen3ForCausalLM.
 
     forward takes the flat-layout pair (input_ids, positions) and returns
-    logits for EVERY position [T, vocab]. The caller slices what it needs
-    (a single sequence wants only the last position; a batching engine
-    wants the last position per sequence).
+    logits for EVERY position [T, vocab] by default. A serving prefill wants
+    one position per sequence, so it passes logits_indices and the head runs
+    on those rows only: at 8192 batched tokens and a 151k vocab, the logits
+    nobody reads would be 2.4 GB of bf16.
     """
 
     def __init__(self, config: ModelConfig):
@@ -187,10 +213,14 @@ class NanoForCausalLM(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,     # [T] int64
-        positions: torch.Tensor,     # [T] int64
+        input_ids: torch.Tensor,                    # [T] int64
+        positions: torch.Tensor,                    # [T] int64
+        attn_metadata: AttentionMetadata | None = None,
+        logits_indices: torch.Tensor | None = None,  # [num_seqs] int64
     ) -> torch.Tensor:
-        hidden = self.model(input_ids, positions)
+        hidden = self.model(input_ids, positions, attn_metadata)
+        if logits_indices is not None:
+            hidden = hidden[logits_indices]
         weight = (self.model.embed_tokens.weight if self.lm_head is None
                   else self.lm_head.weight)
         return F.linear(hidden, weight)
