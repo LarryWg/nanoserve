@@ -65,5 +65,6 @@ message:
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token
-  greedy decode on CPU (a few minutes). Covers Qwen3-0.6B and
-  Qwen2.5-0.5B-Instruct so every architectural branch is exercised.
+  greedy decode (a few minutes on CPU). Covers Qwen3-0.6B and
+  Qwen2.5-0.5B-Instruct so every architectural branch is exercised. When a
+  CUDA GPU is visible, every test runs on both CPU and GPU.
