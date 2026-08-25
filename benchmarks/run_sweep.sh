@@ -11,8 +11,9 @@ PORT="${PORT:-8000}"
 OUT="${OUT:-results}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
-repo="$here/.."
+repo="$(cd "$here/.." && pwd)"
 vllm_python="$here/.venv-vllm/bin/python"
+cd "$repo"                      # uv run needs the project, wherever this was called from
 mkdir -p "$OUT"
 
 server_pid=""
@@ -48,7 +49,7 @@ sweep() {                       # sweep <engine label>
 }
 
 echo "=== nanoserve, online ==="
-(cd "$repo" && uv run python -m nanoserve.server "$MODEL" --port "$PORT") &
+uv run python -m nanoserve.server "$MODEL" --port "$PORT" &
 server_pid=$!
 wait_for_health
 sweep nanoserve
