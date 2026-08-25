@@ -230,3 +230,38 @@ def test_preemption_mid_step_keeps_outputs_aligned_with_the_batch():
     assert [out.seq_id for out in rest].count(second) == 1
     assert victim.status is SeqStatus.FINISHED
     assert engine.scheduler.block_manager.num_free_blocks() == 2
+
+
+def test_the_loop_stamps_the_timestamps_the_benchmarks_read():
+    """TTFT and ITL are derived from these, and nothing else sets them. If
+    the loop stops stamping, every latency number stays plausible and is
+    quietly wrong, which is the worst way for a benchmark to break."""
+    engine = make_engine()
+    engine.submit([1, 2], SamplingParams(max_new_tokens=3))
+    seq = engine.scheduler.waiting[0]
+    assert seq.first_token_time is None
+
+    drain(engine)
+
+    assert seq.first_token_time is not None
+    assert seq.arrival_time <= seq.first_token_time <= seq.finish_time
+
+
+def test_time_to_first_token_survives_preemption():
+    """A preempted sequence re-prefills from scratch, but its first token
+    already went out to the client. Restamping on readmission would make
+    exactly the requests that got the worst service look like the best."""
+    engine = make_engine(num_blocks=2)
+    engine.submit([1, 2, 3, 4], SamplingParams(max_new_tokens=2))
+    engine.submit([5, 6, 7, 8], SamplingParams(max_new_tokens=2))
+    engine.step()                                # both prefill
+    victim = engine.scheduler.running[-1]        # the one decode will evict
+    stamped_at = victim.first_token_time
+    assert stamped_at is not None
+
+    engine.step()                                # evicted mid-decode
+    assert victim.status is SeqStatus.PREEMPTED
+    drain(engine)                                # re-prefills, then finishes
+
+    assert victim.status is SeqStatus.FINISHED
+    assert victim.first_token_time == stamped_at
