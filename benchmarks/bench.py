@@ -196,6 +196,15 @@ def _shell(command: str) -> str | None:
         return None
 
 
+async def server_health(client, base: str) -> dict:
+    """nanoserve reports its config here. vLLM answers an empty 200, which
+    is not something to fail a benchmark run over."""
+    try:
+        return (await client.get(f"{base}/health")).json()
+    except Exception:
+        return {}
+
+
 async def _main(args) -> None:
     import httpx
 
@@ -211,7 +220,7 @@ async def _main(args) -> None:
 
     base = args.url.rsplit("/v1/", 1)[0]
     async with httpx.AsyncClient(timeout=httpx.Timeout(None)) as client:
-        health = (await client.get(f"{base}/health")).json()
+        health = await server_health(client, base)
         if args.warmup:
             await benchmark(args.url, requests[:args.warmup], float("inf"),
                             args.model, args.seed, client)

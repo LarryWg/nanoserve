@@ -13,6 +13,9 @@ HF_BATCH_SIZES="${HF_BATCH_SIZES:-16,32,64}"
 NUM_PROMPTS="${NUM_PROMPTS:-200}"
 PORT="${PORT:-8000}"
 OUT="${OUT:-results}"
+# Which stages to run. An hour-long sweep that dies halfway should be
+# resumable without throwing away the runs that already landed.
+STAGES="${STAGES:-nanoserve vllm offline}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -82,14 +85,20 @@ sweep() {                       # sweep <engine label>
     done
 }
 
+has_stage() { case " $STAGES " in *" $1 "*) return 0;; *) return 1;; esac; }
+
+if has_stage nanoserve; then
 echo "=== nanoserve, online ==="
 wait_for_gpu_free
 start_server uv run python -m nanoserve.server "$MODEL" --port "$PORT"
 wait_for_health
 sweep nanoserve
 stop_server
+fi
 
+if has_stage vllm; then
 echo "=== vLLM, online ==="
+wait_for_gpu_free
 # The venv's bin joins PATH so vLLM can find ninja when it compiles.
 PATH="$here/.venv-vllm/bin:$PATH" start_server "$vllm_python" \
     -m vllm.entrypoints.openai.api_server \
@@ -97,8 +106,11 @@ PATH="$here/.venv-vllm/bin:$PATH" start_server "$vllm_python" \
 wait_for_health
 sweep vllm
 stop_server
+fi
 
+if has_stage offline; then
 echo "=== offline ==="
+wait_for_gpu_free
 for run in $(seq 1 "$RUNS"); do
     uv run python "$here/offline.py" nanoserve --model-path "$MODEL" \
         --num-prompts "$NUM_PROMPTS" --seed "$run" \
@@ -114,5 +126,6 @@ for run in $(seq 1 "$HF_RUNS"); do
         --hf-batch-sizes "$HF_BATCH_SIZES" \
         --out "$OUT/offline-hf-run$run.json"
 done
+fi
 
 echo "=== done, $(ls "$OUT"/*.json | wc -l) runs in $OUT ==="
