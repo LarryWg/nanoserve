@@ -8,7 +8,7 @@ honestly against the real thing.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![uv](https://img.shields.io/badge/pkg-uv-purple)
-![tests](https://img.shields.io/badge/tests-142%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-146%20passing-brightgreen)
 
 ## Why this exists
 
@@ -79,7 +79,9 @@ prompt -> FastAPI -> Scheduler (continuous batching, preemption)
 - [x] Engine step loop: submit, abort, and per-request token streams, with
       the scheduler under a lock and the forward pass outside it
 - [x] OpenAI-compatible streaming server: `/v1/completions` over SSE,
-      incremental detokenization, client disconnect frees the KV blocks
+      incremental detokenization, client disconnect frees the KV blocks.
+      `/health` reports the measured cache size and `/metrics` the
+      server's own TTFT, to check a load generator against
 - [ ] Benchmarks vs HF generate and vLLM
 
 ## Benchmarks

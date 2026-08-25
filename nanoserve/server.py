@@ -19,6 +19,7 @@ import json
 import os
 import time
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -82,7 +83,16 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
 
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        return {"status": "ok", "model": model_name, "config": engine.info()}
+
+    @app.get("/metrics")
+    async def metrics():
+        """Server-side timings, to check the load generator against."""
+        done = engine.metrics()
+        return {
+            "finished": len(done),
+            "requests": [asdict(m) for m in done],
+        }
 
     @app.get("/v1/models")
     async def models():
@@ -130,8 +140,9 @@ class _Completion:
         try:
             async for out in self.engine.outputs(self.seq_id):
                 delta = self._consume(out)
-                if not delta and not out.finished:
-                    continue        # a held-back partial character
+                # Every token gets a chunk, even when its text is not ready
+                # yet, so a client counting chunks is counting tokens. The
+                # benchmarks measure inter-token latency that way.
                 yield _sse(self._body(delta, self._reason(out)))
             yield "data: [DONE]\n\n"
         finally:

@@ -75,9 +75,18 @@ def sse_chunks(text: str) -> list[dict]:
     return [json.loads(line) for line in lines[:-1]]
 
 
-def test_health():
+def test_health_reports_the_config_it_is_running():
+    """The benchmarks record this rather than the flags they think they
+    passed. num_blocks in particular is measured from free VRAM at startup,
+    so there is nowhere else to read it from."""
     with make_client() as client:
-        assert client.get("/health").json() == {"status": "ok"}
+        body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["config"]["block_size"] == 8
+    assert body["config"]["num_blocks"] == NUM_BLOCKS
+    assert body["config"]["kv_cache_tokens"] == NUM_BLOCKS * 8
+    assert body["config"]["max_num_seqs"] == 64
 
 
 def test_completion_returns_the_generated_text():
@@ -288,3 +297,51 @@ def test_two_in_flight_requests_share_a_decode_batch():
     assert bodies["first"]["choices"][0]["text"] == "xxxxxx"
     assert bodies["second"]["choices"][0]["text"] == "xxxxxx"
     assert max(runner.batch_sizes) == 2, runner.batch_sizes
+
+
+class PartialCharTokenizer:
+    """Spells one character with two tokens, the way UTF-8 does."""
+
+    eos_token_id = None
+
+    def encode(self, text):
+        return [1] * len(text)
+
+    def decode(self, token_ids):
+        return "é" if token_ids == [2, 3] else "\ufffd" * len(token_ids)
+
+
+def test_every_token_gets_a_chunk_even_a_half_finished_character():
+    """Chunk count has to equal token count or the benchmarks lie: a token
+    with no printable text yet still took a decode step, and swallowing its
+    chunk would fold that step into its neighbour's inter-token latency."""
+    manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
+    scheduler = Scheduler(block_manager=manager)
+    engine = Engine(scheduler, FakeRunner([2, 3]))
+    client = TestClient(create_app(engine, PartialCharTokenizer()))
+
+    with client:
+        with client.stream(
+            "POST", "/v1/completions",
+            json={"prompt": "hi", "max_tokens": 2, "stream": True},
+        ) as response:
+            chunks = sse_chunks(response.read().decode())
+
+    assert len(chunks) == 2
+    assert [c["choices"][0]["text"] for c in chunks] == ["", "é"]
+
+
+def test_metrics_report_what_the_server_measured():
+    """The independent check on the load generator. If the client's TTFT is
+    far above this, the client is the bottleneck and the run is worthless."""
+    client, engine = make_client_and_engine()
+    with client:
+        client.post("/v1/completions", json={"prompt": "hi", "max_tokens": 5})
+        body = client.get("/metrics").json()
+
+    assert body["finished"] == 1
+    record = body["requests"][0]
+    assert record["num_prompt_tokens"] == 2
+    assert record["num_output_tokens"] == 5
+    assert 0 <= record["ttft"] <= record["e2e"]
+

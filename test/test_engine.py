@@ -265,3 +265,31 @@ def test_time_to_first_token_survives_preemption():
 
     assert victim.status is SeqStatus.FINISHED
     assert victim.first_token_time == stamped_at
+
+
+def test_finished_requests_are_recorded_for_the_benchmarks():
+    """TTFT and end-to-end latency, measured inside the engine. The load
+    generator measures the same things from outside, and two numbers that
+    disagree mean the generator is the bottleneck."""
+    engine = make_engine()
+    engine.submit([1, 2], SamplingParams(max_new_tokens=3))
+
+    drain(engine)
+
+    (record,) = engine.metrics()
+    assert record.num_prompt_tokens == 2
+    assert record.num_output_tokens == 3
+    assert 0 <= record.ttft <= record.e2e
+
+
+def test_an_aborted_request_is_left_out_of_the_metrics():
+    """A client that hung up early would otherwise look like a very fast
+    request and drag every percentile down with it."""
+    engine = make_engine()
+    seq_id = engine.submit([1, 2], SamplingParams(max_new_tokens=50))
+    engine.step()
+    engine.abort(seq_id)
+
+    drain(engine)
+
+    assert engine.metrics() == []

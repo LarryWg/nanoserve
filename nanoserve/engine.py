@@ -28,6 +28,7 @@ import asyncio
 import itertools
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 
 from .scheduler import Scheduler
@@ -38,6 +39,10 @@ from .model_runner import ModelRunner
 # is no work at all, and submit() wakes it early, so it costs nothing.
 IDLE_POLL_SECONDS = 0.1
 
+# How many finished requests to remember for /metrics. Bounded so a server
+# left running for a week does not grow a list forever.
+METRICS_HISTORY = 10_000
+
 
 @dataclass
 class Output:
@@ -45,6 +50,20 @@ class Output:
     seq_id: int
     token_id: int
     finished: bool
+
+
+@dataclass
+class RequestMetrics:
+    """What one finished request cost, measured inside the engine.
+
+    The benchmarks measure the same things from outside. Two numbers that
+    disagree mean the load generator is the bottleneck, not the server.
+    """
+    seq_id: int
+    num_prompt_tokens: int
+    num_output_tokens: int
+    ttft: float          # arrival to first token
+    e2e: float           # arrival to last token
 
 
 class Engine:
@@ -55,6 +74,7 @@ class Engine:
         self._seq_ids = itertools.count()
         self._streams: dict[int, asyncio.Queue] = {}
         self._aborted: set[int] = set()
+        self._metrics: deque[RequestMetrics] = deque(maxlen=METRICS_HISTORY)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -121,8 +141,38 @@ class Engine:
                 stopped = seq.is_stopped
                 if stopped:
                     self.scheduler.finish(seq, now)
+                    self._metrics.append(_metrics_for(seq))
                 outputs.append(Output(seq.seq_id, token, stopped))
         return outputs
+
+    def info(self) -> dict:
+        """The knobs this engine is actually running with.
+
+        The benchmarks record this instead of trusting the flags they think
+        they passed, and num_blocks is measured from free VRAM at startup
+        rather than set, so it cannot be known any other way.
+        """
+        manager = self.scheduler.block_manager
+        info = {
+            "block_size": manager.block_size,
+            "num_blocks": manager.num_blocks,
+            "kv_cache_tokens": manager.num_blocks * manager.block_size,
+            "max_num_seqs": self.scheduler.max_num_seqs,
+            "max_num_batched_tokens": self.scheduler.max_num_batched_tokens,
+            "prefill_first": self.scheduler.prefill_first,
+        }
+        config = getattr(self.runner, "config", None)
+        if config is not None:
+            info["dtype"] = str(config.dtype)
+        return info
+
+    def metrics(self) -> list[RequestMetrics]:
+        """Timings for requests that finished on their own.
+
+        Aborted requests are left out on purpose: a client that hung up
+        early would otherwise look like a very fast one.
+        """
+        return list(self._metrics)
 
     def start(self, event_loop: asyncio.AbstractEventLoop | None = None) -> None:
         """Run the loop in a background thread.
@@ -169,3 +219,13 @@ class Engine:
         for seq_id in self._aborted:
             self.scheduler.abort(seq_id, now)
         self._aborted.clear()
+
+
+def _metrics_for(seq) -> RequestMetrics:
+    return RequestMetrics(
+        seq_id=seq.seq_id,
+        num_prompt_tokens=len(seq.prompt_token_ids),
+        num_output_tokens=len(seq.output_token_ids),
+        ttft=seq.first_token_time - seq.arrival_time,
+        e2e=seq.finish_time - seq.arrival_time,
+    )
