@@ -17,13 +17,43 @@ cd "$repo"                      # uv run needs the project, wherever this was ca
 mkdir -p "$OUT"
 
 server_pid=""
+
+# Servers start with setsid so each owns a process group, and teardown
+# kills the group. vLLM runs its engine as a child that renames itself, so
+# signalling the parent alone leaves it holding the whole GPU.
+start_server() {
+    setsid "$@" &
+    server_pid=$!
+}
+
 stop_server() {
     [ -n "$server_pid" ] || return 0
-    kill "$server_pid" 2>/dev/null || true
+    kill -TERM -"$server_pid" 2>/dev/null || kill -TERM "$server_pid" 2>/dev/null || true
+    for _ in $(seq 1 30); do
+        kill -0 "$server_pid" 2>/dev/null || break
+        sleep 1
+    done
+    kill -KILL -"$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
     server_pid=""
+    wait_for_gpu_free
 }
 trap stop_server EXIT
+
+wait_for_gpu_free() {
+    # Both engines size their KV cache from free VRAM, so anything left
+    # behind would quietly shrink the next one's cache and every number
+    # after it would be measuring a different machine.
+    local used
+    for _ in $(seq 1 60); do
+        used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+        if [ "$used" -lt 1000 ]; then return 0; fi
+        sleep 2
+    done
+    echo "GPU still holds ${used} MiB; refusing to benchmark against it" >&2
+    nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv >&2
+    exit 1
+}
 
 wait_for_health() {
     for _ in $(seq 1 300); do
@@ -49,17 +79,17 @@ sweep() {                       # sweep <engine label>
 }
 
 echo "=== nanoserve, online ==="
-uv run python -m nanoserve.server "$MODEL" --port "$PORT" &
-server_pid=$!
+wait_for_gpu_free
+start_server uv run python -m nanoserve.server "$MODEL" --port "$PORT"
 wait_for_health
 sweep nanoserve
 stop_server
 
 echo "=== vLLM, online ==="
 # The venv's bin joins PATH so vLLM can find ninja when it compiles.
-PATH="$here/.venv-vllm/bin:$PATH" "$vllm_python" -m vllm.entrypoints.openai.api_server \
-    --model "$MODEL" --port "$PORT" --dtype bfloat16 &
-server_pid=$!
+PATH="$here/.venv-vllm/bin:$PATH" start_server "$vllm_python" \
+    -m vllm.entrypoints.openai.api_server \
+    --model "$MODEL" --port "$PORT" --dtype bfloat16
 wait_for_health
 sweep vllm
 stop_server
