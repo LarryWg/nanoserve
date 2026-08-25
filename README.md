@@ -8,7 +8,7 @@ honestly against the real thing.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![uv](https://img.shields.io/badge/pkg-uv-purple)
-![tests](https://img.shields.io/badge/tests-112%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-120%20passing-brightgreen)
 
 ## Why this exists
 
