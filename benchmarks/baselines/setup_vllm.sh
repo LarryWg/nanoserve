@@ -10,10 +10,12 @@ here="$(cd "$(dirname "$0")" && pwd)"
 venv="$here/../.venv-vllm"
 
 uv venv --python 3.12 "$venv"
+# ninja too: vLLM's flashinfer sampler compiles itself on first start and
+# shells out to it. Without it the engine dies before serving anything.
 if [ -n "${VLLM_VERSION:-}" ]; then
-    VIRTUAL_ENV="$venv" uv pip install "vllm==$VLLM_VERSION"
+    VIRTUAL_ENV="$venv" uv pip install "vllm==$VLLM_VERSION" ninja
 else
-    VIRTUAL_ENV="$venv" uv pip install vllm
+    VIRTUAL_ENV="$venv" uv pip install vllm ninja
 fi
 
 echo

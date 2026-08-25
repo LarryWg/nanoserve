@@ -56,7 +56,8 @@ sweep nanoserve
 stop_server
 
 echo "=== vLLM, online ==="
-"$vllm_python" -m vllm.entrypoints.openai.api_server \
+# The venv's bin joins PATH so vLLM can find ninja when it compiles.
+PATH="$here/.venv-vllm/bin:$PATH" "$vllm_python" -m vllm.entrypoints.openai.api_server \
     --model "$MODEL" --port "$PORT" --dtype bfloat16 &
 server_pid=$!
 wait_for_health
