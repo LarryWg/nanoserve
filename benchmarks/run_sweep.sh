@@ -115,8 +115,8 @@ for run in $(seq 1 "$RUNS"); do
     uv run python "$here/offline.py" nanoserve --model-path "$MODEL" \
         --num-prompts "$NUM_PROMPTS" --seed "$run" \
         --out "$OUT/offline-nanoserve-run$run.json"
-    "$vllm_python" "$here/offline.py" vllm --model-path "$MODEL" \
-        --num-prompts "$NUM_PROMPTS" --seed "$run" \
+    PATH="$here/.venv-vllm/bin:$PATH" "$vllm_python" "$here/offline.py" vllm \
+        --model-path "$MODEL" --num-prompts "$NUM_PROMPTS" --seed "$run" \
         --out "$OUT/offline-vllm-run$run.json"
 done
 
