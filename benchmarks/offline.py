@@ -91,6 +91,16 @@ def run_hf(requests, tokenizer, args) -> dict:
 ENGINES = {"nanoserve": run_nanoserve, "vllm": run_vllm, "hf": run_hf}
 
 
+def resolve_model(model: str) -> str:
+    """A local snapshot. nanoserve's runner needs a directory, and pinning
+    all three engines to the same one rules out reading different weights."""
+    if os.path.isdir(model):
+        return model
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(model)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Offline throughput.")
     parser.add_argument("engine", choices=sorted(ENGINES))
@@ -109,6 +119,7 @@ def main():
 
     from transformers import AutoTokenizer
 
+    args.model_path = resolve_model(args.model_path)
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     requests = dataset.load(
         tokenizer, args.num_prompts, seed=args.seed,
