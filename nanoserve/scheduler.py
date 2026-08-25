@@ -154,6 +154,24 @@ class Scheduler:
         victim.on_preempted()
         self.waiting.appendleft(victim)
 
+    def abort(self, seq_id: int, now: float) -> None:
+        """Drop a request the client no longer wants, wherever it sits.
+
+        Unknown ids are ignored: a sequence that finished on its own between
+        the client hanging up and this call is not an error.
+        """
+        for seq in self.waiting:
+            if seq.seq_id == seq_id:
+                # Waiting sequences hold no blocks, so there is nothing to
+                # free. Preemption frees before it requeues.
+                self.waiting.remove(seq)
+                seq.on_finished(now)
+                return
+        for seq in self.running:
+            if seq.seq_id == seq_id:
+                self.finish(seq, now)
+                return
+
     def finish(self, seq: Sequence, now: float) -> None:
         """Retire a completed sequence: free its KV and stamp the time."""
         self.running.remove(seq)

@@ -12,11 +12,14 @@ dependencies = [
     "torch ; sys_platform != 'linux'",
     "transformers",
     "safetensors",
+    "fastapi",
+    "uvicorn",
 ]
 
 [dependency-groups]
 dev = [
     "pytest",
+    "httpx2",  # what starlette's TestClient speaks through now
 ]
 # The paged attention kernels. Linux and CUDA only, and the wheel is built
 # for python 3.12, so anywhere else this group installs nothing.

@@ -10,6 +10,7 @@ Layer first means k[layer] is already the tensor the kernel wants, no copy.
 A slot is one token's seat in the cache:
     slot = block_id * block_size + offset inside the block
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -63,7 +64,7 @@ class KVCache:
     def store(
         self,
         layer_idx: int,
-        k: torch.Tensor,           # [num_tokens, num_kv_heads, head_dim]
+        k: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
         v: torch.Tensor,
         slot_mapping: torch.Tensor,  # [num_tokens] int64, one slot per token
     ) -> None:

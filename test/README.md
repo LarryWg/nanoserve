@@ -62,6 +62,13 @@ message:
   prefill, decode, preemption, stop conditions.
 - `test_scheduler.py`: continuous batching policy. FCFS admission, the
   token budget, prefill-first vs decode-first, LIFO preemption, and finish.
+- `test_engine.py`: the step loop, with a fake runner standing in for the
+  model so it runs anywhere. A request from submit to finished, batching,
+  abort from both the waiting queue and mid-generation, and streaming off
+  the background thread.
+- `test_server.py`: the HTTP layer end to end with a fake model behind it.
+  A real engine and scheduler run, so a request goes all the way through
+  submit, schedule, step, detokenize, and stream, on a laptop.
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token
