@@ -293,3 +293,52 @@ def test_an_aborted_request_is_left_out_of_the_metrics():
     drain(engine)
 
     assert engine.metrics() == []
+
+
+def test_metrics_history_is_bounded(monkeypatch):
+    """A server left running for a week must not grow this list forever,
+    and when it does drop records it has to drop the oldest."""
+    monkeypatch.setattr("nanoserve.engine.METRICS_HISTORY", 2)
+    engine = make_engine()
+    for _ in range(4):
+        engine.submit([1, 2], SamplingParams(max_new_tokens=1))
+        drain(engine)
+
+    assert [record.seq_id for record in engine.metrics()] == [2, 3]
+
+
+def test_a_preempted_request_reports_its_true_first_token_time():
+    """Preemption is exactly when a request gets bad service. If its TTFT
+    were restamped on readmission, the requests hurt worst by memory
+    pressure would be the ones that look best in the percentiles."""
+    engine = make_engine(num_blocks=2)
+    engine.submit([1, 2, 3, 4], SamplingParams(max_new_tokens=2))
+    engine.submit([5, 6, 7, 8], SamplingParams(max_new_tokens=2))
+    engine.step()                                    # both prefill
+    victim = engine.scheduler.running[-1]
+    engine.step()                                    # decode evicts the victim
+    assert victim.status is SeqStatus.PREEMPTED
+
+    drain(engine)
+
+    record = next(r for r in engine.metrics() if r.seq_id == victim.seq_id)
+    assert record.num_output_tokens == 2             # kept across the eviction
+    assert record.ttft == victim.first_token_time - victim.arrival_time
+    assert record.ttft <= record.e2e
+
+
+class RunnerWithConfig(FakeRunner):
+    """ModelRunner carries the model config; the fake runner has none."""
+
+    class config:
+        dtype = "torch.bfloat16"
+
+
+def test_info_reports_the_dtype_only_when_the_runner_has_a_config():
+    """The benchmark report names the dtype it ran at. A runner without a
+    config omits the key rather than reporting a made-up one."""
+    engine = make_engine()
+    assert "dtype" not in engine.info()
+
+    engine.runner = RunnerWithConfig()
+    assert engine.info()["dtype"] == "torch.bfloat16"
