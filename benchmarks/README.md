@@ -95,5 +95,16 @@ that would otherwise dominate a 200-prompt sample.
 
 ## Results
 
-See the repository README for the charts, and `results/results.md` for the
-same numbers as a table.
+Charts and the numbers as a table are in the repository README. The raw
+per-run summaries, including provenance for every run, are in
+`docs/benchmarks/summaries.json`.
+
+The full run files carry a timestamp for every token of every request,
+which is 43 MB for one sweep, so they are not committed. `plot.py` reads
+either: point it at a `results/` directory of raw runs.
+
+Recorded for the committed sweep: RTX 4090 24GB, driver 580.159.04,
+torch 2.8.0+cu126, flash-attn 2.8.3.post1, transformers 5.14.1,
+vLLM 0.27.1, Qwen3-0.6B in bf16. nanoserve's KV cache measured 180,480
+tokens against vLLM's 183,600, so both ran on effectively the same cache
+budget.

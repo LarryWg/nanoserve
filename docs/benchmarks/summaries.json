@@ -1,0 +1,1467 @@
+{
+  "online": [
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 201.3316022604704,
+        "offered_rate": 1.0,
+        "attained_rate": 0.9933860246204784,
+        "output_tokens": 40514,
+        "output_tok_per_s": 201.2302070073703,
+        "ttft_p50": 0.052368005737662315,
+        "ttft_p99": 0.07603999227285385,
+        "itl_p50": 0.027430549263954163,
+        "itl_p99": 0.05999647080898285,
+        "e2e_p50": 3.606333564966917,
+        "e2e_p99": 22.370825679972768,
+        "client_cpu_fraction": 0.050014627047832626
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 214.6697672046721,
+        "offered_rate": 1.0,
+        "attained_rate": 0.9316635621508569,
+        "output_tokens": 36366,
+        "output_tok_per_s": 169.4043855058903,
+        "ttft_p50": 0.049984123557806015,
+        "ttft_p99": 0.07075641863048077,
+        "itl_p50": 0.02577853761613369,
+        "itl_p99": 0.05354521609842777,
+        "e2e_p50": 2.796922916546464,
+        "e2e_p99": 22.13946669176221,
+        "client_cpu_fraction": 0.04599922536174013
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 217.9355920124799,
+        "offered_rate": 1.0,
+        "attained_rate": 0.9177023273396626,
+        "output_tokens": 38090,
+        "output_tok_per_s": 174.77640824183877,
+        "ttft_p50": 0.05155539698898792,
+        "ttft_p99": 0.07488080114126205,
+        "itl_p50": 0.026222437620162964,
+        "itl_p99": 0.05615021660923958,
+        "e2e_p50": 2.3846927415579557,
+        "e2e_p99": 22.356013221666217,
+        "client_cpu_fraction": 0.04749971725319291
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 61.06070672348142,
+        "offered_rate": 16.0,
+        "attained_rate": 3.2754288433921497,
+        "output_tokens": 40514,
+        "output_tok_per_s": 663.5036208059478,
+        "ttft_p50": 0.22222904674708843,
+        "ttft_p99": 11.542487010359764,
+        "itl_p50": 0.04100037179887295,
+        "itl_p99": 0.09747555293142796,
+        "e2e_p50": 11.279231382533908,
+        "e2e_p99": 37.17812795937061,
+        "client_cpu_fraction": 0.13471955110595854
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 47.14423888921738,
+        "offered_rate": 16.0,
+        "attained_rate": 4.242299901584436,
+        "output_tokens": 36366,
+        "output_tok_per_s": 771.3773911050979,
+        "ttft_p50": 0.0819929912686348,
+        "ttft_p99": 8.16314059868455,
+        "itl_p50": 0.04060951992869377,
+        "itl_p99": 0.10122594609856606,
+        "e2e_p50": 8.277065236121416,
+        "e2e_p99": 34.001506980508566,
+        "client_cpu_fraction": 0.1593970584117059
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 52.49986908584833,
+        "offered_rate": 16.0,
+        "attained_rate": 3.809533308987074,
+        "output_tokens": 38090,
+        "output_tok_per_s": 725.5256186965883,
+        "ttft_p50": 0.06715801917016506,
+        "ttft_p99": 9.214104635640979,
+        "itl_p50": 0.0384222287684679,
+        "itl_p99": 0.09805168397724628,
+        "e2e_p50": 7.894907830283046,
+        "e2e_p99": 33.85873880237341,
+        "client_cpu_fraction": 0.1546781190391378
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 111.7020267508924,
+        "offered_rate": 2.0,
+        "attained_rate": 1.7904778079454335,
+        "output_tokens": 40514,
+        "output_tok_per_s": 362.69708955550647,
+        "ttft_p50": 0.0536080077290535,
+        "ttft_p99": 0.07710045389831066,
+        "itl_p50": 0.03001805953681469,
+        "itl_p99": 0.06707680597901344,
+        "e2e_p50": 4.068236133083701,
+        "e2e_p99": 24.8630148768425,
+        "client_cpu_fraction": 0.07842590018117117
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 119.08828713931143,
+        "offered_rate": 2.0,
+        "attained_rate": 1.6794262878769657,
+        "output_tokens": 36366,
+        "output_tok_per_s": 305.3700819246687,
+        "ttft_p50": 0.05335608683526516,
+        "ttft_p99": 0.08341516740620136,
+        "itl_p50": 0.029540371149778366,
+        "itl_p99": 0.06770228780806065,
+        "e2e_p50": 3.3558912109583616,
+        "e2e_p99": 27.133053053170443,
+        "client_cpu_fraction": 0.06611048146817372
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 116.43770173937082,
+        "offered_rate": 2.0,
+        "attained_rate": 1.7176567126657263,
+        "output_tokens": 38090,
+        "output_tok_per_s": 327.12772092718757,
+        "ttft_p50": 0.05355244688689709,
+        "ttft_p99": 0.07619094103574753,
+        "itl_p50": 0.028100261464715004,
+        "itl_p99": 0.061995161697268486,
+        "e2e_p50": 2.6974887493997812,
+        "e2e_p99": 24.392600432038307,
+        "client_cpu_fraction": 0.07899396726833487
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 58.151168486103415,
+        "offered_rate": 32.0,
+        "attained_rate": 3.4393118007215056,
+        "output_tokens": 40514,
+        "output_tok_per_s": 696.7013914721554,
+        "ttft_p50": 0.5490711107850075,
+        "ttft_p99": 15.836824184283614,
+        "itl_p50": 0.040169671177864075,
+        "itl_p99": 0.08966902829706669,
+        "e2e_p50": 12.473379576578736,
+        "e2e_p99": 39.694804701954126,
+        "client_cpu_fraction": 0.1496693054771529
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 44.77134210243821,
+        "offered_rate": 32.0,
+        "attained_rate": 4.46714327978808,
+        "output_tokens": 36366,
+        "output_tok_per_s": 812.2606625638666,
+        "ttft_p50": 1.6875592526048422,
+        "ttft_p99": 12.365582436323166,
+        "itl_p50": 0.04044150933623314,
+        "itl_p99": 0.08896276727318764,
+        "e2e_p50": 11.016917066648602,
+        "e2e_p99": 37.96999025158584,
+        "client_cpu_fraction": 0.18954216249724296
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 54.52287772111595,
+        "offered_rate": 32.0,
+        "attained_rate": 3.6681849594036158,
+        "output_tokens": 38090,
+        "output_tok_per_s": 698.6058255184186,
+        "ttft_p50": 1.5149100050330162,
+        "ttft_p99": 14.747386638075113,
+        "itl_p50": 0.041223371401429176,
+        "itl_p99": 0.09517395123839378,
+        "e2e_p50": 11.045734347775578,
+        "e2e_p99": 38.3508212659508,
+        "client_cpu_fraction": 0.15111676683949182
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 69.58758693560958,
+        "offered_rate": 4.0,
+        "attained_rate": 2.8740758058626596,
+        "output_tokens": 40514,
+        "output_tok_per_s": 582.201535993599,
+        "ttft_p50": 0.05836937390267849,
+        "ttft_p99": 0.08558751456439495,
+        "itl_p50": 0.03478298708796501,
+        "itl_p99": 0.09467333182692528,
+        "e2e_p50": 5.135648064315319,
+        "e2e_p99": 30.430245207622647,
+        "client_cpu_fraction": 0.12882928399709231
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 70.79363544844091,
+        "offered_rate": 4.0,
+        "attained_rate": 2.825112719993879,
+        "output_tokens": 36366,
+        "output_tok_per_s": 513.6902458764871,
+        "ttft_p50": 0.05502217076718807,
+        "ttft_p99": 0.07997174933552742,
+        "itl_p50": 0.03171047195792198,
+        "itl_p99": 0.08408342115581036,
+        "e2e_p50": 3.613726554438472,
+        "e2e_p99": 29.86815686710179,
+        "client_cpu_fraction": 0.11722015612609361
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 69.3822096530348,
+        "offered_rate": 4.0,
+        "attained_rate": 2.8825833163883954,
+        "output_tokens": 38090,
+        "output_tok_per_s": 548.9879926061699,
+        "ttft_p50": 0.05769065394997597,
+        "ttft_p99": 0.0839285533875227,
+        "itl_p50": 0.034213485196232796,
+        "itl_p99": 0.0893881767988205,
+        "e2e_p50": 3.2190658692270517,
+        "e2e_p99": 28.721041498705745,
+        "client_cpu_fraction": 0.11962373411722216
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 62.25693196058273,
+        "offered_rate": 8.0,
+        "attained_rate": 3.212493672618299,
+        "output_tokens": 40514,
+        "output_tok_per_s": 650.7548432622889,
+        "ttft_p50": 0.06622621975839138,
+        "ttft_p99": 3.30330035276711,
+        "itl_p50": 0.0399492084980011,
+        "itl_p99": 0.09856170415878296,
+        "e2e_p50": 6.4869418647140265,
+        "e2e_p99": 34.044500732794404,
+        "client_cpu_fraction": 0.12691333721685125
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 52.634959558025,
+        "offered_rate": 8.0,
+        "attained_rate": 3.799755935587243,
+        "output_tokens": 36366,
+        "output_tok_per_s": 690.9096217678284,
+        "ttft_p50": 0.060560233891010284,
+        "ttft_p99": 1.6281093191355467,
+        "itl_p50": 0.03830347955226898,
+        "itl_p99": 0.10426877811551094,
+        "e2e_p50": 5.033928306773305,
+        "e2e_p99": 33.44418116286397,
+        "client_cpu_fraction": 0.15031294915840282
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 53.966287745162845,
+        "offered_rate": 8.0,
+        "attained_rate": 3.7060173741138343,
+        "output_tokens": 38090,
+        "output_tok_per_s": 705.8110088999797,
+        "ttft_p50": 0.06355949677526951,
+        "ttft_p99": 1.651116555556655,
+        "itl_p50": 0.036966508254408836,
+        "itl_p99": 0.09550772048532963,
+        "e2e_p50": 4.090646231546998,
+        "e2e_p99": 32.34785023331642,
+        "client_cpu_fraction": 0.15555609530975104
+      },
+      "engine": "nanoserve",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "a5b54f7",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      }
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 185.4387116804719,
+        "offered_rate": 1.0,
+        "attained_rate": 1.0785234549332858,
+        "output_tokens": 40473,
+        "output_tok_per_s": 218.25539895757436,
+        "ttft_p50": 0.024180209264159203,
+        "ttft_p99": 0.04198160953819752,
+        "itl_p50": 0.0022574812173843384,
+        "itl_p99": 0.0052680037915706635,
+        "e2e_p50": 0.32450034096837044,
+        "e2e_p99": 1.9779252652078867,
+        "client_cpu_fraction": 0.05475593476671721
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 202.32506902888417,
+        "offered_rate": 1.0,
+        "attained_rate": 0.9885082504108661,
+        "output_tokens": 36341,
+        "output_tok_per_s": 179.61689164090643,
+        "ttft_p50": 0.02282976731657982,
+        "ttft_p99": 0.04162105172872543,
+        "itl_p50": 0.0022522620856761932,
+        "itl_p99": 0.005265394225716591,
+        "e2e_p50": 0.26758840680122375,
+        "e2e_p99": 1.97530778311193,
+        "client_cpu_fraction": 0.043136715790538196
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 210.85410826466978,
+        "offered_rate": 1.0,
+        "attained_rate": 0.9485231359540531,
+        "output_tokens": 38056,
+        "output_tok_per_s": 180.48498230933723,
+        "ttft_p50": 0.02389264851808548,
+        "ttft_p99": 0.04352310113608837,
+        "itl_p50": 0.0022011511027812958,
+        "itl_p99": 0.0053813643753528595,
+        "e2e_p50": 0.2400222271680832,
+        "e2e_p99": 1.8381983321160078,
+        "client_cpu_fraction": 0.04420462127444239
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 13.336703285574913,
+        "offered_rate": 16.0,
+        "attained_rate": 14.996209761697378,
+        "output_tokens": 40431,
+        "output_tok_per_s": 3031.5587843759336,
+        "ttft_p50": 0.0322516243904829,
+        "ttft_p99": 0.06709497049450874,
+        "itl_p50": 0.0031327325850725174,
+        "itl_p99": 0.013152429834008217,
+        "e2e_p50": 0.4791835453361273,
+        "e2e_p99": 2.920098988339305,
+        "client_cpu_fraction": 0.510438363531947
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 14.191522985696793,
+        "offered_rate": 16.0,
+        "attained_rate": 14.092920132784476,
+        "output_tokens": 36339,
+        "output_tok_per_s": 2560.6131235262756,
+        "ttft_p50": 0.029046302661299706,
+        "ttft_p99": 0.06611374765634537,
+        "itl_p50": 0.0030431319028139114,
+        "itl_p99": 0.012131549417972565,
+        "e2e_p50": 0.38518768548965454,
+        "e2e_p99": 2.9907679706811905,
+        "client_cpu_fraction": 0.4508215930346725
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 14.271139284595847,
+        "offered_rate": 16.0,
+        "attained_rate": 14.014298088722208,
+        "output_tokens": 38082,
+        "output_tok_per_s": 2668.4624990735956,
+        "ttft_p50": 0.029623601585626602,
+        "ttft_p99": 0.05641359090805054,
+        "itl_p50": 0.003020571544766426,
+        "itl_p99": 0.013054370880126953,
+        "e2e_p50": 0.3342317771166563,
+        "e2e_p99": 2.679591180756688,
+        "client_cpu_fraction": 0.47145100792774847
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 92.75327417999506,
+        "offered_rate": 2.0,
+        "attained_rate": 2.156258113453593,
+        "output_tokens": 40480,
+        "output_tok_per_s": 436.4266421630072,
+        "ttft_p50": 0.023941317573189735,
+        "ttft_p99": 0.04027128033339977,
+        "itl_p50": 0.0023739319294691086,
+        "itl_p99": 0.005991432815790176,
+        "e2e_p50": 0.327977754175663,
+        "e2e_p99": 2.0132808201014996,
+        "client_cpu_fraction": 0.0981108546350669
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 101.43944906070828,
+        "offered_rate": 2.0,
+        "attained_rate": 1.9716195410358188,
+        "output_tokens": 36335,
+        "output_tok_per_s": 358.19398011768243,
+        "ttft_p50": 0.02140425518155098,
+        "ttft_p99": 0.04417915269732475,
+        "itl_p50": 0.002343451604247093,
+        "itl_p99": 0.005777345970273018,
+        "e2e_p50": 0.27136128954589367,
+        "e2e_p99": 2.0538042560219765,
+        "client_cpu_fraction": 0.07944979073355118
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 105.4492422528565,
+        "offered_rate": 2.0,
+        "attained_rate": 1.8966471045891489,
+        "output_tokens": 38064,
+        "output_tok_per_s": 360.9698769454068,
+        "ttft_p50": 0.023635348305106163,
+        "ttft_p99": 0.04570572264492512,
+        "itl_p50": 0.0023541711270809174,
+        "itl_p99": 0.005546674132347107,
+        "e2e_p50": 0.24322205781936646,
+        "e2e_p99": 1.8969272412359715,
+        "client_cpu_fraction": 0.08610388093854744
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 8.382696924731135,
+        "offered_rate": 32.0,
+        "attained_rate": 23.85867004328261,
+        "output_tokens": 40370,
+        "output_tok_per_s": 4815.872548236594,
+        "ttft_p50": 0.03776094689965248,
+        "ttft_p99": 0.07361782342195511,
+        "itl_p50": 0.003860313445329666,
+        "itl_p99": 0.015564732253551483,
+        "e2e_p50": 0.6664467323571444,
+        "e2e_p99": 3.8066711220890284,
+        "client_cpu_fraction": 0.573026562111342
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 8.611858943477273,
+        "offered_rate": 32.0,
+        "attained_rate": 23.223789580469433,
+        "output_tokens": 36366,
+        "output_tok_per_s": 4222.781659416757,
+        "ttft_p50": 0.03609342686831951,
+        "ttft_p99": 0.06431526690721512,
+        "itl_p50": 0.003663083538413048,
+        "itl_p99": 0.01366174966096878,
+        "e2e_p50": 0.4597774799913168,
+        "e2e_p99": 3.8237206041812897,
+        "client_cpu_fraction": 0.5312837832144728
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 8.3382104113698,
+        "offered_rate": 32.0,
+        "attained_rate": 23.985962230850447,
+        "output_tokens": 38034,
+        "output_tok_per_s": 4561.41043744083,
+        "ttft_p50": 0.03556509502232075,
+        "ttft_p99": 0.07896783761680126,
+        "itl_p50": 0.0034042634069919586,
+        "itl_p99": 0.014539210125803947,
+        "e2e_p50": 0.39467974193394184,
+        "e2e_p99": 3.126017829403281,
+        "client_cpu_fraction": 0.5041488272193188
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 46.99843427538872,
+        "offered_rate": 4.0,
+        "attained_rate": 4.255460912337932,
+        "output_tokens": 40482,
+        "output_tok_per_s": 861.3478432663208,
+        "ttft_p50": 0.02397717721760273,
+        "ttft_p99": 0.04140330106019974,
+        "itl_p50": 0.002440711483359337,
+        "itl_p99": 0.007371485233306885,
+        "e2e_p50": 0.33373210579156876,
+        "e2e_p99": 2.160571027547121,
+        "client_cpu_fraction": 0.16955294623874131
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 51.068972723558545,
+        "offered_rate": 4.0,
+        "attained_rate": 3.9162722360330213,
+        "output_tokens": 36331,
+        "output_tok_per_s": 711.4104330365785,
+        "ttft_p50": 0.023213127627968788,
+        "ttft_p99": 0.04073508083820343,
+        "itl_p50": 0.0024130214005708694,
+        "itl_p99": 0.00716494582593441,
+        "e2e_p50": 0.2838354203850031,
+        "e2e_p99": 2.1499844901263714,
+        "client_cpu_fraction": 0.14748023307164707
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 52.74471773952246,
+        "offered_rate": 4.0,
+        "attained_rate": 3.791848901110657,
+        "output_tokens": 38082,
+        "output_tok_per_s": 722.0059492604802,
+        "ttft_p50": 0.022935686632990837,
+        "ttft_p99": 0.043563222512602806,
+        "itl_p50": 0.002439873293042183,
+        "itl_p99": 0.006763335317373276,
+        "e2e_p50": 0.24669304303824902,
+        "e2e_p99": 2.006150173023343,
+        "client_cpu_fraction": 0.1492589085200644
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 24.42282990552485,
+        "offered_rate": 8.0,
+        "attained_rate": 8.189059202953246,
+        "output_tokens": 40514,
+        "output_tok_per_s": 1658.8577227422388,
+        "ttft_p50": 0.02549383044242859,
+        "ttft_p99": 0.05038893595337868,
+        "itl_p50": 0.0026207417249679565,
+        "itl_p99": 0.00873633660376072,
+        "e2e_p50": 0.3876084964722395,
+        "e2e_p99": 2.3165822103619576,
+        "client_cpu_fraction": 0.30429729186783555
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 26.429602587595582,
+        "offered_rate": 8.0,
+        "attained_rate": 7.567272316605608,
+        "output_tokens": 36342,
+        "output_tok_per_s": 1375.0490526504052,
+        "ttft_p50": 0.024729566648602486,
+        "ttft_p99": 0.04740094393491745,
+        "itl_p50": 0.002557031810283661,
+        "itl_p99": 0.008048446848988533,
+        "e2e_p50": 0.30286482349038124,
+        "e2e_p99": 2.3739530239254236,
+        "client_cpu_fraction": 0.2682782677681213
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    },
+    {
+      "summary": {
+        "num_requests": 200,
+        "num_failed": 0,
+        "duration_s": 26.93811471387744,
+        "offered_rate": 8.0,
+        "attained_rate": 7.424424542114226,
+        "output_tokens": 38090,
+        "output_tok_per_s": 1413.9816540456543,
+        "ttft_p50": 0.02500440925359726,
+        "ttft_p99": 0.05108150653541088,
+        "itl_p50": 0.0025765206664800644,
+        "itl_p99": 0.008205356076359749,
+        "e2e_p50": 0.2699635997414589,
+        "e2e_p99": 2.23145192861557,
+        "client_cpu_fraction": 0.29034221893675405
+      },
+      "engine": "vllm",
+      "provenance": {
+        "model": "Qwen/Qwen3-0.6B",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "5577175",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      },
+      "server_config": {}
+    }
+  ],
+  "offline": [
+    {
+      "best_batch_size": 32,
+      "by_batch_size": {
+        "16": {
+          "duration_s": 125.81999259255826,
+          "output_tok_per_s": 321.999701042712
+        },
+        "32": {
+          "duration_s": 107.23123632743955,
+          "output_tok_per_s": 377.8190141936545
+        },
+        "64": {
+          "duration_s": 124.55872216820717,
+          "output_tok_per_s": 325.26024107158787
+        }
+      },
+      "duration_s": 107.23123632743955,
+      "output_tok_per_s": 377.8190141936545,
+      "engine": "hf",
+      "num_requests": 200,
+      "prompt_tokens": 47032,
+      "output_tokens": 40514,
+      "total_tok_per_s": 816.4225555757929,
+      "requests_per_s": 1.8651281739332304,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      }
+    },
+    {
+      "duration_s": 41.49436532706022,
+      "config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      },
+      "engine": "nanoserve",
+      "num_requests": 200,
+      "prompt_tokens": 47032,
+      "output_tokens": 40514,
+      "output_tok_per_s": 976.3735312172402,
+      "total_tok_per_s": 2109.8286311878487,
+      "requests_per_s": 4.819931535850522,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      }
+    },
+    {
+      "duration_s": 29.508017474785447,
+      "config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      },
+      "engine": "nanoserve",
+      "num_requests": 200,
+      "prompt_tokens": 41097,
+      "output_tokens": 36366,
+      "output_tok_per_s": 1232.410819570467,
+      "total_tok_per_s": 2625.15094638913,
+      "requests_per_s": 6.777818949405858,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      }
+    },
+    {
+      "duration_s": 38.29604921117425,
+      "config": {
+        "block_size": 256,
+        "num_blocks": 705,
+        "kv_cache_tokens": 180480,
+        "max_num_seqs": 64,
+        "max_num_batched_tokens": 8192,
+        "prefill_first": true,
+        "dtype": "torch.bfloat16"
+      },
+      "engine": "nanoserve",
+      "num_requests": 200,
+      "prompt_tokens": 51674,
+      "output_tokens": 38090,
+      "output_tok_per_s": 994.6195700230579,
+      "total_tok_per_s": 2343.9493589800413,
+      "requests_per_s": 5.222470832360504,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.8.0+cu126",
+        "flash_attn": "2.8.3.post1",
+        "vllm": null,
+        "transformers": "5.14.1"
+      }
+    },
+    {
+      "duration_s": 7.223988927900791,
+      "config": {
+        "engine": "vllm"
+      },
+      "engine": "vllm",
+      "num_requests": 200,
+      "prompt_tokens": 47032,
+      "output_tokens": 40514,
+      "output_tok_per_s": 5608.258872535801,
+      "total_tok_per_s": 12118.789338377332,
+      "requests_per_s": 27.685535234910407,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 1,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.13.0+cu130",
+        "flash_attn": null,
+        "vllm": "0.27.1",
+        "transformers": "5.15.1"
+      }
+    },
+    {
+      "duration_s": 5.830003589391708,
+      "config": {
+        "engine": "vllm"
+      },
+      "engine": "vllm",
+      "num_requests": 200,
+      "prompt_tokens": 41097,
+      "output_tokens": 36366,
+      "output_tok_per_s": 6237.73200863404,
+      "total_tok_per_s": 13286.95579895558,
+      "requests_per_s": 34.30529620323401,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 2,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.13.0+cu130",
+        "flash_attn": null,
+        "vllm": "0.27.1",
+        "transformers": "5.15.1"
+      }
+    },
+    {
+      "duration_s": 6.724391862750053,
+      "config": {
+        "engine": "vllm"
+      },
+      "engine": "vllm",
+      "num_requests": 200,
+      "prompt_tokens": 51674,
+      "output_tokens": 38090,
+      "output_tok_per_s": 5664.452753118176,
+      "total_tok_per_s": 13349.013833838277,
+      "requests_per_s": 29.74246654302009,
+      "provenance": {
+        "model": "/root/.cache/huggingface/hub/models--Qwen--Qwen3-0.6B/snapshots/c1899de289a04d12100db370d81485cdf75e47ca",
+        "seed": 3,
+        "gpu": "NVIDIA GeForce RTX 4090, 580.159.04",
+        "commit": "cfecab3",
+        "torch": "2.13.0+cu130",
+        "flash_attn": null,
+        "vllm": "0.27.1",
+        "transformers": "5.15.1"
+      }
+    }
+  ],
+  "gaps": {
+    "fragmentation": {
+      "16": {
+        "tokens": 88257,
+        "slots_held": 89792,
+        "wasted_fraction": 0.017095064148253743,
+        "slots_per_token": 1.0173923881391844
+      },
+      "256": {
+        "tokens": 88257,
+        "slots_held": 115712,
+        "wasted_fraction": 0.2372701189159292,
+        "slots_per_token": 1.3110801409519925
+      }
+    },
+    "decode_step_times": {
+      "1": {
+        "ms_per_step": 23.544441955164075,
+        "tok_per_s": 42.47286904927755
+      },
+      "2": {
+        "ms_per_step": 24.298578966408968,
+        "tok_per_s": 82.30934009617829
+      },
+      "4": {
+        "ms_per_step": 23.439080407842994,
+        "tok_per_s": 170.65515926390836
+      },
+      "8": {
+        "ms_per_step": 24.436564510688186,
+        "tok_per_s": 327.3782612322988
+      },
+      "16": {
+        "ms_per_step": 24.709648732095957,
+        "tok_per_s": 647.5203339988082
+      },
+      "32": {
+        "ms_per_step": 25.422261422500014,
+        "tok_per_s": 1258.7393178042905
+      },
+      "64": {
+        "ms_per_step": 25.31133759766817,
+        "tok_per_s": 2528.511176189126
+      }
+    }
+  }
+}
