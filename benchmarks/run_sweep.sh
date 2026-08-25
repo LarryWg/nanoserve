@@ -6,6 +6,10 @@ set -euo pipefail
 MODEL="${MODEL:-Qwen/Qwen3-0.6B}"
 RATES="${RATES:-1 2 4 8 16 32}"
 RUNS="${RUNS:-3}"
+# HF is a reference point rather than the subject, and its static batching
+# sweep is slow, so it defaults to a single run.
+HF_RUNS="${HF_RUNS:-1}"
+HF_BATCH_SIZES="${HF_BATCH_SIZES:-16,32,64}"
 NUM_PROMPTS="${NUM_PROMPTS:-200}"
 PORT="${PORT:-8000}"
 OUT="${OUT:-results}"
@@ -102,8 +106,12 @@ for run in $(seq 1 "$RUNS"); do
     "$vllm_python" "$here/offline.py" vllm --model-path "$MODEL" \
         --num-prompts "$NUM_PROMPTS" --seed "$run" \
         --out "$OUT/offline-vllm-run$run.json"
+done
+
+for run in $(seq 1 "$HF_RUNS"); do
     uv run python "$here/offline.py" hf --model-path "$MODEL" \
         --num-prompts "$NUM_PROMPTS" --seed "$run" \
+        --hf-batch-sizes "$HF_BATCH_SIZES" \
         --out "$OUT/offline-hf-run$run.json"
 done
 
