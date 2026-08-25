@@ -37,7 +37,7 @@ class KVCache:
     ):
         if block_size % BLOCK_SIZE_MULTIPLE != 0 or block_size <= 0:
             raise ValueError(
-                f"block_size must be a positive multiple of "
+                "block_size must be a positive multiple of "
                 f"{BLOCK_SIZE_MULTIPLE} (flash attn paged kernel "
                 f"requirement), got {block_size}"
             )

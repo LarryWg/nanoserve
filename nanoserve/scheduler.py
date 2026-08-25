@@ -1,34 +1,22 @@
 """Continuous batching scheduler.
 
-Each engine step, the scheduler decides which sequences the model runs next.
-That decision is the heart of a serving engine.
+Each engine step, this decides which sequences the model runs next. That
+decision is the heart of a serving engine, and three ideas drive it:
 
-The ideas:
+1. Iteration-level scheduling, which is what "continuous batching" names:
+   sequences join and leave the batch every step, not only when a whole
+   request finishes. This is why it beats static batching under load.
 
-1. Iteration-level scheduling (the point of continuous batching): sequences
-   join and leave the batch every step, not only when a whole request
-   finishes. This is why continuous batching beats static batching at high
-   request rates.
+2. A step is either a prefill batch or a decode batch, never a mix. Mixing
+   them is chunked prefill, a later extension: it trades faster first tokens
+   for new requests against small pauses in everyone else's token stream.
 
-2. Prefill vs decode: a step is either a prefill batch or a decode batch,
-   never a mix. (Mixing them is called chunked prefill, a later extension:
-   it trades faster first tokens for new requests against small pauses in
-   the token stream of running ones.)
+3. A token budget per step (max_num_batched_tokens), so one huge prompt
+   cannot blow up activation memory or starve the decodes.
 
-3. Token budget: cap the total tokens per step (max_num_batched_tokens) so
-   one huge prompt cannot blow up activation memory or starve the decodes.
-
-The policies, decided:
-- Admission is first-come-first-served, and strict: if the sequence at the
-  head of the waiting queue does not fit, later ones do not skip ahead.
-  Skipping would be fairer to short prompts but lets big prompts starve.
-- prefill_first chooses which batch runs when both are possible. True means
-  new requests get their first token sooner; False means running requests
-  get a steadier token stream. Benchmark both when the server exists.
-- Preemption evicts the most recently admitted running sequence (LIFO): it
-  has the least sunk compute, and evicting the oldest would thrash long
-  sequences. Eviction is recompute-style: the blocks are freed, the tokens
-  are kept, and the sequence prefills again from scratch on readmission.
+Each method below states the policy it implements. The one knob with no
+method of its own is prefill_first: True gets new requests their first token
+sooner, False gives running requests a steadier stream. Benchmark both.
 """
 from collections import deque
 from dataclasses import dataclass, field
@@ -69,10 +57,10 @@ class Scheduler:
                 f"prompt has {seq.num_tokens} tokens, more than the step "
                 f"budget ({self.max_num_batched_tokens})"
             )
-        if self.block_manager.blocks_needed(seq.num_tokens) > self.block_manager.num_blocks:
+        cache_blocks = self.block_manager.num_blocks
+        if self.block_manager.blocks_needed(seq.num_tokens) > cache_blocks:
             raise ValueError(
-                f"prompt needs more KV blocks than the cache has "
-                f"({self.block_manager.num_blocks})"
+                f"prompt needs more KV blocks than the cache has ({cache_blocks})"
             )
         self.waiting.append(seq)
 
