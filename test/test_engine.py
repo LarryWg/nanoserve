@@ -9,9 +9,9 @@ import asyncio
 import pytest
 
 from nanoserve.block_manager import BlockManager
-from nanoserve.engine import Engine
+from nanoserve.engine import Engine, Output
 from nanoserve.scheduler import Scheduler
-from nanoserve.sequence import SamplingParams
+from nanoserve.sequence import SamplingParams, SeqStatus
 
 BLOCK_SIZE = 4
 NUM_BLOCKS = 8
@@ -32,8 +32,8 @@ class FakeRunner:
         return [self.token] * len(batch.seqs)
 
 
-def make_engine(**scheduler_kwargs) -> Engine:
-    manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=BLOCK_SIZE)
+def make_engine(num_blocks: int = NUM_BLOCKS, **scheduler_kwargs) -> Engine:
+    manager = BlockManager(num_blocks=num_blocks, block_size=BLOCK_SIZE)
     scheduler = Scheduler(block_manager=manager, **scheduler_kwargs)
     return Engine(scheduler, FakeRunner())
 
@@ -137,3 +137,96 @@ def test_streams_tokens_from_the_background_thread():
 
     assert [out.token_id for out in outputs] == [7, 7, 7]
     assert outputs[-1].finished
+
+
+def test_a_stop_token_ends_the_request_before_the_length_cap():
+    """max_new_tokens is not the only exit. The fake runner always samples
+    7, so making 7 a stop token ends the request on its first token."""
+    engine = make_engine()
+    engine.submit([1, 2], SamplingParams(max_new_tokens=50, stop_token_ids=(7,)))
+
+    outputs = drain(engine)
+
+    assert [out.finished for out in outputs] == [True]
+    assert engine.scheduler.running == []
+    assert engine.scheduler.block_manager.num_free_blocks() == NUM_BLOCKS
+
+
+def test_a_rejected_request_leaves_no_stream_behind():
+    """add_request raises before the stream is registered, so a caller that
+    retries forever cannot leak a queue per attempt."""
+    engine = make_engine(max_num_batched_tokens=4)
+    with pytest.raises(ValueError):
+        engine.submit([1, 2, 3, 4, 5], SamplingParams())
+    assert engine._streams == {}
+
+
+def test_publishing_to_an_aborted_stream_is_dropped():
+    """The loop publishes outside the lock, so a token can already be in
+    flight when the client hangs up. It has nowhere to go and must not
+    raise: the sequence is gone, the request is not a bug."""
+    engine = make_engine()
+    seq_id = engine.submit([1, 2], SamplingParams())
+    engine.abort(seq_id)
+    assert seq_id not in engine._streams
+
+    engine._publish(Output(seq_id=seq_id, token_id=7, finished=False))
+
+
+class LockWatchingRunner(FakeRunner):
+    """Records whether the scheduler lock was held while forward ran."""
+
+    engine: Engine
+
+    def __init__(self):
+        super().__init__()
+        self.locked_during_forward = []
+
+    def forward(self, batch):
+        self.locked_during_forward.append(self.engine._lock.locked())
+        return super().forward(batch)
+
+
+def test_forward_runs_without_the_scheduler_lock_held():
+    """The engine's central threading claim. If the lock spanned the
+    forward pass, every submit() would block behind the whole GPU step and
+    the server thread would stall for as long as a batch takes."""
+    engine = make_engine()
+    engine.runner = LockWatchingRunner()
+    engine.runner.engine = engine
+    engine.submit([1, 2], SamplingParams(max_new_tokens=2))
+
+    drain(engine)
+
+    assert engine.runner.locked_during_forward == [False, False]
+
+
+def test_preemption_mid_step_keeps_outputs_aligned_with_the_batch():
+    """A decode step can evict a sequence while assembling its own batch,
+    so the batch the runner sees is shorter than the running list was when
+    the step began. The engine zips tokens against that batch, and the
+    victim keeps the tokens it already produced.
+
+    Two 4-token prompts fill both blocks exactly, so the first decode step
+    has no block for its new token and must evict to continue.
+    """
+    engine = make_engine(num_blocks=2)
+    first = engine.submit([1, 2, 3, 4], SamplingParams(max_new_tokens=2))
+    second = engine.submit([5, 6, 7, 8], SamplingParams(max_new_tokens=2))
+
+    prefill = engine.step()
+    assert [out.seq_id for out in prefill] == [first, second]
+
+    decode = engine.step()
+    victim = engine.scheduler.waiting[0]
+    assert [out.seq_id for out in decode] == [first]     # victim is not in it
+    assert victim.seq_id == second
+    assert victim.status is SeqStatus.PREEMPTED
+    assert len(victim.output_token_ids) == 1             # its token survived
+    assert victim.num_computed_tokens == 0               # but its KV did not
+
+    # Re-prefills prompt + that token, finishes, and everything comes back.
+    rest = drain(engine)
+    assert [out.seq_id for out in rest].count(second) == 1
+    assert victim.status is SeqStatus.FINISHED
+    assert engine.scheduler.block_manager.num_free_blocks() == 2

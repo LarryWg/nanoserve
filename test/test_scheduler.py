@@ -224,3 +224,65 @@ def test_finish_marks_sequence():
     assert seq.finish_time == 7.0
     assert sched.running == []
     assert sched.block_manager.num_free_blocks() == 8
+
+
+# ---------- abort ----------
+
+def test_abort_removes_a_waiting_sequence_without_touching_blocks():
+    sched = make_scheduler(max_num_seqs=1)
+    sched.add_request(make_seq(1))
+    sched.add_request(make_seq(2))
+    run_step(sched, sched.step())                       # only seq 1 admitted
+    free_before = sched.block_manager.num_free_blocks()
+
+    sched.abort(2, now=5.0)
+
+    assert list(sched.waiting) == []
+    assert [s.seq_id for s in sched.running] == [1]
+    assert sched.block_manager.num_free_blocks() == free_before
+
+
+def test_abort_frees_a_running_sequence():
+    sched = make_scheduler()
+    sched.add_request(make_seq(1))
+    run_step(sched, sched.step())
+    seq = sched.running[0]
+
+    sched.abort(1, now=5.0)
+
+    assert sched.running == []
+    assert seq.status is SeqStatus.FINISHED
+    assert seq.finish_time == 5.0
+    assert sched.block_manager.num_free_blocks() == 8
+
+
+def test_abort_of_a_preempted_sequence_does_not_double_free():
+    """A preempted sequence sits in the waiting queue but already gave its
+    blocks back. Freeing them again is a KeyError by design, so abort must
+    take the waiting path for it, not the running one."""
+    sched = make_scheduler(num_blocks=2)
+    sched.add_request(make_seq(1, prompt_len=BS))
+    sched.add_request(make_seq(2, prompt_len=BS))
+    run_step(sched, sched.step())                       # both prefill, 0 free
+    sched.step()                                        # decode preempts seq 2
+    victim = sched.waiting[0]
+    assert victim.status is SeqStatus.PREEMPTED
+
+    sched.abort(victim.seq_id, now=3.0)
+
+    assert list(sched.waiting) == []
+    assert victim.status is SeqStatus.FINISHED
+    assert victim.finish_time == 3.0
+
+
+def test_abort_of_an_unknown_sequence_is_ignored():
+    """The client can hang up in the same step the sequence finishes on its
+    own. By then the id is gone from both queues, and that is not an error."""
+    sched = make_scheduler()
+    sched.add_request(make_seq(1))
+    run_step(sched, sched.step())
+
+    sched.abort(999, now=1.0)
+
+    assert [s.seq_id for s in sched.running] == [1]
+    assert sched.block_manager.num_free_blocks() == 7
