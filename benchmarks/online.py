@@ -1,15 +1,3 @@
-"""Online serving, driven in process.
-
-Requests still arrive over time on a Poisson schedule, but there is no
-socket in the middle: the driver submits straight into the engine and steps
-it, so what gets measured is the scheduler rather than a server stack.
-
-The loop is single threaded on purpose. Each turn it admits every request
-whose arrival time has passed, then runs one step and timestamps the tokens
-that came back. Arrivals land within one step of their schedule, which at
-tens of milliseconds is finer than anything being measured, and there is no
-lock or queue to wonder about afterwards.
-"""
 from __future__ import annotations
 
 import argparse
@@ -22,10 +10,9 @@ import dataset
 
 
 def run(engine, requests, schedule, sampling_for, deadline_s=1800) -> list:
-    """Submit on schedule, step until everything finishes."""
     records = {}
     pending = list(zip(requests, schedule))
-    pending.reverse()                    # pop() takes the earliest
+    pending.reverse()
     start = time.perf_counter()
     deadline = start + deadline_s
     live = 0
@@ -50,7 +37,6 @@ def run(engine, requests, schedule, sampling_for, deadline_s=1800) -> list:
                 live -= 1
 
         if not outputs and pending:
-            # Nothing to run yet; wait for the next arrival rather than spin.
             time.sleep(max(0.0, pending[-1][1] - (time.perf_counter() - start)))
 
     if live or pending:
@@ -126,7 +112,6 @@ def NANOSERVE(args, requests, tokenizer):
     )
     engine = Engine(scheduler, runner)
 
-    # ignore_eos, so every engine generates the same number of tokens.
     def sampling_for(req):
         return SamplingParams(temperature=0.0, max_new_tokens=req.output_len)
 
@@ -137,11 +122,6 @@ def NANOSERVE(args, requests, tokenizer):
 
 
 def VLLM(args, requests, tokenizer):
-    """vLLM's own step loop, driven the same way as nanoserve's.
-
-    add_request/step is the engine underneath its servers, so this compares
-    scheduler against scheduler with no HTTP on either side.
-    """
     from vllm import LLMEngine, EngineArgs
     from vllm import SamplingParams as VllmSamplingParams
     from vllm import TokensPrompt
@@ -181,7 +161,6 @@ def VLLM(args, requests, tokenizer):
         stamp = time.perf_counter()
         for out in outputs:
             record = records[out.request_id]
-            # vLLM reports the whole output each step, so count what is new.
             produced = len(out.outputs[0].token_ids)
             for _ in range(produced - seen[out.request_id]):
                 record.chunk_times.append(stamp)

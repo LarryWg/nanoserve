@@ -1,15 +1,3 @@
-"""What a benchmark run records, and how it is summarised.
-
-Metric definitions, pinned here so every driver means the same thing:
-
-- TTFT: submitting a request to its first token.
-- ITL: the gap between consecutive tokens of one request. One timestamp
-  per token, so a step that produced nothing printable still counts.
-- E2E: submitting a request to its last token.
-- Attained rate, next to the offered rate. Past saturation the queue grows
-  without bound and a fixed prompt count simply takes longer, so a run that
-  fell short of what was asked for is describing a queue, not an engine.
-"""
 from __future__ import annotations
 
 import random
@@ -20,8 +8,8 @@ from dataclasses import asdict, dataclass, field
 @dataclass
 class RequestRecord:
     prompt_len: int
-    output_len: int          # asked for
-    num_chunks: int          # delivered; one per token
+    output_len: int
+    num_chunks: int
     send_time: float
     chunk_times: list[float] = field(default_factory=list)
     error: str | None = None
@@ -40,8 +28,6 @@ class RequestRecord:
 
 
 def poisson_schedule(rate: float, count: int, seed: int = 0) -> list[float]:
-    """Arrival offsets in seconds. An infinite rate means send everything
-    at once, which is the burst case the offline benchmarks use."""
     if rate == float("inf"):
         return [0.0] * count
     rng = random.Random(seed)
@@ -53,7 +39,6 @@ def poisson_schedule(rate: float, count: int, seed: int = 0) -> list[float]:
 
 
 def percentile(values: list[float], q: float) -> float:
-    """Nearest-rank, so the answer is always a value that happened."""
     if not values:
         return float("nan")
     ordered = sorted(values)
@@ -86,7 +71,6 @@ def summarize(records: list, offered_rate: float, wall: float) -> dict:
 
 
 def provenance(model: str, seed: int) -> dict:
-    """Everything needed to tell whether two runs are comparable."""
     info = {"model": model, "seed": seed, "gpu": _shell(
         "nvidia-smi --query-gpu=name,driver_version --format=csv,noheader")}
     info["commit"] = _shell("git rev-parse --short HEAD")
