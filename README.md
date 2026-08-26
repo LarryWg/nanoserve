@@ -2,13 +2,13 @@
 
 **An LLM inference engine you can actually read.**
 
-Continuous batching, paged KV cache, and tensor parallelism in ~2k lines of
-Python, built to understand how vLLM-class systems work, and benchmarked
-honestly against the real thing.
+Continuous batching, paged KV cache, and an OpenAI-compatible streaming
+server in ~1.3k lines of single-GPU Python, built to understand how
+vLLM-class systems work, and benchmarked honestly against the real thing.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![uv](https://img.shields.io/badge/pkg-uv-purple)
-![tests](https://img.shields.io/badge/tests-163%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-148%20passing-brightgreen)
 
 ## Why this exists
 
@@ -23,8 +23,8 @@ the same core ideas at a scale one person can hold in their head:
 | Step loop and OpenAI-compatible streaming | `nanoserve/engine.py`, `nanoserve/server.py` |
 | HF-exact model forward pass | `nanoserve/model/` |
 
-Every non-obvious decision is explained in a comment right where it happens,
-written for someone learning inference systems for the first time.
+Scope is deliberately single-GPU. Everything here is a technique that a
+production engine also has, at a size one person can read in an afternoon.
 
 ## Quickstart
 
@@ -84,9 +84,12 @@ prompt -> FastAPI -> Scheduler (continuous batching, preemption)
       server's own TTFT, to check a load generator against
 - [x] Benchmarks vs HF generate and vLLM: ShareGPT under Poisson arrivals,
       3 runs per point, with the gap to vLLM measured and attributed
-- [ ] Tensor parallelism (the sharding plan is in `model_runner.py`)
 - [ ] The per-step overhead above: CUDA graphs, or at least a decode step
       that does not rebuild its metadata in python every time
+- [ ] Chunked prefill and prefix caching, the two remaining single-GPU
+      techniques vLLM has on by default and nanoserve does not have at all
+
+Multi-GPU serving (tensor/pipeline parallelism) is out of scope on purpose.
 
 ## Benchmarks
 
