@@ -17,7 +17,7 @@ import json
 import os
 import time
 
-import bench
+import metrics
 import dataset
 
 
@@ -35,7 +35,7 @@ def run(engine, requests, schedule, sampling_for, deadline_s=1800) -> list:
         while pending and pending[-1][1] <= now:
             req, offset = pending.pop()
             seq_id = engine.submit(req.prompt_ids, sampling_for(req))
-            records[seq_id] = bench.RequestRecord(
+            records[seq_id] = metrics.RequestRecord(
                 req.prompt_len, req.output_len, 0, time.perf_counter()
             )
             live += 1
@@ -92,10 +92,10 @@ def main():
     records, config = driver(args, requests, tokenizer)
 
     wall = max(r.chunk_times[-1] for r in records) - min(r.send_time for r in records)
-    result = bench.summarize(records, args.request_rate, wall, 0.0)
+    result = metrics.summarize(records, args.request_rate, wall)
     result["engine"] = args.engine
     result["server_config"] = config
-    result["provenance"] = bench.provenance(args.model_path, args.seed)
+    result["provenance"] = metrics.provenance(args.model_path, args.seed)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(result, f, indent=2)
@@ -132,7 +132,7 @@ def NANOSERVE(args, requests, tokenizer):
 
     if args.warmup:
         run(engine, requests[:args.warmup], [0.0] * args.warmup, sampling_for)
-    schedule = bench.poisson_schedule(args.request_rate, len(requests), args.seed)
+    schedule = metrics.poisson_schedule(args.request_rate, len(requests), args.seed)
     return run(engine, requests, schedule, sampling_for), engine.info()
 
 
@@ -154,7 +154,7 @@ def VLLM(args, requests, tokenizer):
         max_num_batched_tokens=args.max_num_batched_tokens,
     ))
 
-    schedule = bench.poisson_schedule(args.request_rate, len(requests), args.seed)
+    schedule = metrics.poisson_schedule(args.request_rate, len(requests), args.seed)
     records = {}
     pending = list(zip(range(len(requests)), requests, schedule))
     pending.reverse()
@@ -171,7 +171,7 @@ def VLLM(args, requests, tokenizer):
                 VllmSamplingParams(temperature=0.0, max_tokens=req.output_len,
                                    ignore_eos=True),
             )
-            records[str(index)] = bench.RequestRecord(
+            records[str(index)] = metrics.RequestRecord(
                 req.prompt_len, req.output_len, 0, time.perf_counter()
             )
             seen[str(index)] = 0

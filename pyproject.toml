@@ -12,14 +12,11 @@ dependencies = [
     "torch ; sys_platform != 'linux'",
     "transformers",
     "safetensors",
-    "fastapi",
-    "uvicorn",
 ]
 
 [dependency-groups]
 dev = [
     "pytest",
-    "httpx2",  # what starlette's TestClient speaks through now
 ]
 # Plotting the benchmark results. Not installed by default: the charts are
 # drawn after a run, usually not on the machine that produced it.

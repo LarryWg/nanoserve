@@ -12,7 +12,7 @@ from nanoserve.block_manager import BlockManager
 from nanoserve.engine import Engine
 from nanoserve.scheduler import Scheduler
 from nanoserve.sequence import SamplingParams
-from test_server import FakeRunner
+from conftest import FakeRunner
 
 
 def make_engine(**kwargs):
