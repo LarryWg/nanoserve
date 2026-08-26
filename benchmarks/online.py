@@ -49,6 +49,8 @@ def main():
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--engine", default="nanoserve", choices=("nanoserve", "vllm"))
     parser.add_argument("--request-rate", type=float, default=4.0)
+    parser.add_argument("--rates", help="sweep these rates in one process, e.g. 1,2,4")
+    parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--num-prompts", type=int, default=200)
     parser.add_argument("--output-len", type=int)
     parser.add_argument("--seed", type=int, default=0)
@@ -75,24 +77,36 @@ def main():
         req.prompt_ids = tokenizer.encode(req.prompt)
 
     driver = NANOSERVE if args.engine == "nanoserve" else VLLM
-    records, config = driver(args, requests, tokenizer)
+    engine, config = driver(args)
+    rates = [float(x) for x in args.rates.split(",")] if args.rates else [args.request_rate]
+    provenance = metrics.provenance(args.model_path, args.seed)
 
-    wall = max(r.chunk_times[-1] for r in records) - min(r.send_time for r in records)
-    result = metrics.summarize(records, args.request_rate, wall)
-    result["engine"] = args.engine
-    result["server_config"] = config
-    result["provenance"] = metrics.provenance(args.model_path, args.seed)
-    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    with open(args.out, "w") as f:
-        json.dump(result, f, indent=2)
-    s = result["summary"]
-    print(f"{args.engine:10s} {s['output_tok_per_s']:8.1f} tok/s  "
-          f"offered {s['offered_rate']:g} attained {s['attained_rate']:.2f}  "
-          f"TTFT p50 {s['ttft_p50'] * 1000:.0f}ms p99 {s['ttft_p99'] * 1000:.0f}ms  "
-          f"ITL p99 {s['itl_p99'] * 1000:.0f}ms  -> {args.out}")
+    for rate in rates:
+        for run in range(1, args.runs + 1):
+            schedule = metrics.poisson_schedule(rate, len(requests), run)
+            records = engine(requests, schedule)
+            wall = (max(r.chunk_times[-1] for r in records)
+                    - min(r.send_time for r in records))
+            result = metrics.summarize(records, rate, wall)
+            result["engine"] = args.engine
+            result["server_config"] = config
+            result["provenance"] = provenance
+            path = args.out
+            if args.rates or args.runs > 1:
+                stem = args.out[:-5] if args.out.endswith(".json") else args.out
+                path = f"{stem}-r{rate:g}-run{run}.json"
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(result, f, indent=2)
+            s = result["summary"]
+            print(f"{args.engine:10s} rate {rate:5g} run {run}  "
+                  f"{s['output_tok_per_s']:8.1f} tok/s  "
+                  f"attained {s['attained_rate']:.2f}  "
+                  f"TTFT p50 {s['ttft_p50'] * 1000:.0f}ms p99 {s['ttft_p99'] * 1000:.0f}ms  "
+                  f"ITL p99 {s['itl_p99'] * 1000:.0f}ms  -> {path}", flush=True)
 
 
-def NANOSERVE(args, requests, tokenizer):
+def NANOSERVE(args):
     from nanoserve.engine import Engine
     from nanoserve.model_runner import ModelRunner
     from nanoserve.scheduler import Scheduler
@@ -115,16 +129,21 @@ def NANOSERVE(args, requests, tokenizer):
     def sampling_for(req):
         return SamplingParams(temperature=0.0, max_new_tokens=req.output_len)
 
-    if args.warmup:
-        run(engine, requests[:args.warmup], [0.0] * args.warmup, sampling_for)
-    schedule = metrics.poisson_schedule(args.request_rate, len(requests), args.seed)
-    return run(engine, requests, schedule, sampling_for), engine.info()
+    warmed = [False]
+
+    def one_point(requests, schedule):
+        if args.warmup and not warmed[0]:
+          run(engine, requests[:args.warmup], [0.0] * args.warmup, sampling_for)
+          warmed[0] = True
+        return run(engine, requests, schedule, sampling_for)
+
+    return one_point, engine.info()
 
 
-def VLLM(args, requests, tokenizer):
+def VLLM(args):
     from vllm import LLMEngine, EngineArgs
     from vllm import SamplingParams as VllmSamplingParams
-    from vllm import TokensPrompt
+    from vllm.inputs import TokensPrompt
 
     engine = LLMEngine.from_engine_args(EngineArgs(
         model=args.model_path,
@@ -134,45 +153,47 @@ def VLLM(args, requests, tokenizer):
         max_num_batched_tokens=args.max_num_batched_tokens,
     ))
 
-    schedule = metrics.poisson_schedule(args.request_rate, len(requests), args.seed)
-    records = {}
-    pending = list(zip(range(len(requests)), requests, schedule))
-    pending.reverse()
-    start = time.perf_counter()
-    live, seen = 0, {}
+    def one_point(requests, schedule):
+        records = {}
+        pending = list(zip(range(len(requests)), requests, schedule))
+        pending.reverse()
+        start = time.perf_counter()
+        live, seen = 0, {}
 
-    while pending or live:
-        now = time.perf_counter() - start
-        while pending and pending[-1][2] <= now:
-            index, req, _ = pending.pop()
-            engine.add_request(
-                str(index),
-                TokensPrompt(prompt_token_ids=req.prompt_ids),
-                VllmSamplingParams(temperature=0.0, max_tokens=req.output_len,
-                                   ignore_eos=True),
-            )
-            records[str(index)] = metrics.RequestRecord(
-                req.prompt_len, req.output_len, 0, time.perf_counter()
-            )
-            seen[str(index)] = 0
-            live += 1
+        while pending or live:
+            now = time.perf_counter() - start
+            while pending and pending[-1][2] <= now:
+                index, req, _ = pending.pop()
+                engine.add_request(
+                    str(index),
+                    TokensPrompt(prompt_token_ids=req.prompt_ids),
+                    VllmSamplingParams(temperature=0.0, max_tokens=req.output_len,
+                                       ignore_eos=True),
+                )
+                records[str(index)] = metrics.RequestRecord(
+                    req.prompt_len, req.output_len, 0, time.perf_counter()
+                )
+                seen[str(index)] = 0
+                live += 1
 
-        outputs = engine.step()
-        stamp = time.perf_counter()
-        for out in outputs:
-            record = records[out.request_id]
-            produced = len(out.outputs[0].token_ids)
-            for _ in range(produced - seen[out.request_id]):
-                record.chunk_times.append(stamp)
-                record.num_chunks += 1
-            seen[out.request_id] = produced
-            if out.finished:
-                live -= 1
+            outputs = engine.step()
+            stamp = time.perf_counter()
+            for out in outputs:
+                record = records[out.request_id]
+                produced = len(out.outputs[0].token_ids)
+                for _ in range(produced - seen[out.request_id]):
+                    record.chunk_times.append(stamp)
+                    record.num_chunks += 1
+                seen[out.request_id] = produced
+                if out.finished:
+                    live -= 1
 
-        if not outputs and pending:
-            time.sleep(max(0.0, pending[-1][2] - (time.perf_counter() - start)))
+            if not outputs and pending:
+                time.sleep(max(0.0, pending[-1][2] - (time.perf_counter() - start)))
 
-    return [records[k] for k in sorted(records, key=int)], {"engine": "vllm"}
+        return [records[k] for k in sorted(records, key=int)]
+
+    return one_point, {"engine": "vllm"}
 
 
 if __name__ == "__main__":

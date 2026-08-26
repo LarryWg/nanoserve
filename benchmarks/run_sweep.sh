@@ -2,8 +2,8 @@
 # The whole matrix: both engines across the rate sweep, all three offline.
 # Writes one json per run into results/.
 #
-# Every run is its own process, so the GPU is empty between them and each
-# engine sizes its KV cache against the same free VRAM.
+# Each engine loads once and sweeps every rate in that one process, so the
+# weights and the measured cache size are identical across its points.
 set -euo pipefail
 
 MODEL="${MODEL:-Qwen/Qwen3-0.6B}"
@@ -27,25 +27,16 @@ has_stage() { case " $STAGES " in *" $1 "*) return 0;; *) return 1;; esac; }
 
 if has_stage nanoserve; then
 echo "=== nanoserve, online ==="
-for rate in $RATES; do
-    for run in $(seq 1 "$RUNS"); do
-        uv run python "$here/online.py" --engine nanoserve --model-path "$MODEL" \
-            --request-rate "$rate" --num-prompts "$NUM_PROMPTS" --seed "$run" $EXTRA \
-            --out "$OUT/online-nanoserve-r$rate-run$run.json"
-    done
-done
+uv run python "$here/online.py" --engine nanoserve --model-path "$MODEL" \
+    --rates "$(echo $RATES | tr ' ' ,)" --runs "$RUNS" \
+    --num-prompts "$NUM_PROMPTS" $EXTRA --out "$OUT/online-nanoserve.json"
 fi
 
 if has_stage vllm; then
 echo "=== vLLM, online ==="
-for rate in $RATES; do
-    for run in $(seq 1 "$RUNS"); do
-        PATH="$vllm_path" "$vllm_python" "$here/online.py" --engine vllm \
-            --model-path "$MODEL" --request-rate "$rate" \
-            --num-prompts "$NUM_PROMPTS" --seed "$run" \
-            --out "$OUT/online-vllm-r$rate-run$run.json"
-    done
-done
+PATH="$vllm_path" "$vllm_python" "$here/online.py" --engine vllm \
+    --model-path "$MODEL" --rates "$(echo $RATES | tr ' ' ,)" --runs "$RUNS" \
+    --num-prompts "$NUM_PROMPTS" --out "$OUT/online-vllm.json"
 fi
 
 if has_stage offline; then
