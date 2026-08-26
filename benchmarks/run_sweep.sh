@@ -16,6 +16,7 @@ OUT="${OUT:-results}"
 # Which stages to run. An hour-long sweep that dies halfway should be
 # resumable without throwing away the runs that already landed.
 STAGES="${STAGES:-nanoserve vllm offline}"
+SERVER_ARGS="${SERVER_ARGS:-}"     # extra flags for the nanoserve server
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -90,7 +91,7 @@ has_stage() { case " $STAGES " in *" $1 "*) return 0;; *) return 1;; esac; }
 if has_stage nanoserve; then
 echo "=== nanoserve, online ==="
 wait_for_gpu_free
-start_server uv run python -m nanoserve.server "$MODEL" --port "$PORT"
+start_server uv run python -m nanoserve.server "$MODEL" --port "$PORT" $SERVER_ARGS
 wait_for_health
 sweep nanoserve
 stop_server

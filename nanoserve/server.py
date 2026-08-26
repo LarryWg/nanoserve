@@ -219,11 +219,13 @@ def build_app(model: str, **runner_kwargs) -> FastAPI:
         path = snapshot_download(model)
 
     max_num_seqs = runner_kwargs.pop("max_num_seqs", 64)
+    prefill_first = runner_kwargs.pop("prefill_first", True)
     runner = ModelRunner(path, **runner_kwargs)
     scheduler = Scheduler(
         block_manager=runner.block_manager,
         max_num_seqs=max_num_seqs,
         max_num_batched_tokens=runner.max_num_batched_tokens,
+        prefill_first=prefill_first,
     )
     tokenizer = AutoTokenizer.from_pretrained(path)
     return create_app(Engine(scheduler, runner), tokenizer, model_name=model)
@@ -238,6 +240,11 @@ def main():
     parser.add_argument("--max-num-seqs", type=int, default=64)
     parser.add_argument("--max-num-batched-tokens", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
+    # Which batch runs when both are possible. Prefill first gets new
+    # requests their first token sooner; decode first keeps the token
+    # stream of running ones steadier.
+    parser.add_argument("--decode-first", dest="prefill_first",
+                        action="store_false", default=True)
     args = parser.parse_args()
 
     import uvicorn
@@ -248,6 +255,7 @@ def main():
         max_num_seqs=args.max_num_seqs,
         max_num_batched_tokens=args.max_num_batched_tokens,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        prefill_first=args.prefill_first,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

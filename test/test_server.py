@@ -345,3 +345,21 @@ def test_metrics_report_what_the_server_measured():
     assert record["num_output_tokens"] == 5
     assert 0 <= record["ttft"] <= record["e2e"]
 
+
+
+def test_the_server_can_serve_decode_first():
+    """Which batch wins when both are possible is a policy, and the
+    benchmarks need to be able to flip it without editing code."""
+    from nanoserve.server import build_app  # noqa: F401  (import path check)
+
+    manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
+    scheduler = Scheduler(block_manager=manager, prefill_first=False)
+    engine = Engine(scheduler, FakeRunner([ord("x")]))
+    with TestClient(create_app(engine, FakeTokenizer())) as client:
+        body = client.post(
+            "/v1/completions", json={"prompt": "hi", "max_tokens": 3}
+        ).json()
+
+    assert body["choices"][0]["text"] == "xxx"
+    assert client.app is not None
+    assert engine.info()["prefill_first"] is False
