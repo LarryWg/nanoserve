@@ -15,7 +15,7 @@ import json
 import os
 import time
 
-import bench
+import metrics
 import dataset
 
 DEADLINE_SLACK_S = 600
@@ -137,7 +137,7 @@ def main():
         output_tok_per_s=output_tokens / result["duration_s"],
         total_tok_per_s=(prompt_tokens + output_tokens) / result["duration_s"],
         requests_per_s=len(requests) / result["duration_s"],
-        provenance=bench.provenance(args.model_path, args.seed),
+        provenance=metrics.provenance(args.model_path, args.seed),
     )
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w") as f:

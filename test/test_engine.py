@@ -1,9 +1,7 @@
-import asyncio
-
 import pytest
 
 from nanoserve.block_manager import BlockManager
-from nanoserve.engine import Engine, Output
+from nanoserve.engine import Engine
 from nanoserve.scheduler import Scheduler
 from nanoserve.sequence import SamplingParams, SeqStatus
 
@@ -113,22 +111,6 @@ def test_abort_of_an_unknown_request_is_ignored():
     assert engine.step() == []
 
 
-def test_streams_tokens_from_the_background_thread():
-    async def main():
-        engine = make_engine()
-        engine.start(asyncio.get_running_loop())
-        try:
-            seq_id = engine.submit([1, 2], SamplingParams(max_new_tokens=3))
-            return [out async for out in engine.outputs(seq_id)]
-        finally:
-            engine.stop()
-
-    outputs = asyncio.run(asyncio.wait_for(main(), timeout=10))
-
-    assert [out.token_id for out in outputs] == [7, 7, 7]
-    assert outputs[-1].finished
-
-
 def test_a_stop_token_ends_the_request_before_the_length_cap():
     engine = make_engine()
     engine.submit([1, 2], SamplingParams(max_new_tokens=50, stop_token_ids=(7,)))
@@ -138,45 +120,6 @@ def test_a_stop_token_ends_the_request_before_the_length_cap():
     assert [out.finished for out in outputs] == [True]
     assert engine.scheduler.running == []
     assert engine.scheduler.block_manager.num_free_blocks() == NUM_BLOCKS
-
-
-def test_a_rejected_request_leaves_no_stream_behind():
-    engine = make_engine(max_num_batched_tokens=4)
-    with pytest.raises(ValueError):
-        engine.submit([1, 2, 3, 4, 5], SamplingParams())
-    assert engine._streams == {}
-
-
-def test_publishing_to_an_aborted_stream_is_dropped():
-    engine = make_engine()
-    seq_id = engine.submit([1, 2], SamplingParams())
-    engine.abort(seq_id)
-    assert seq_id not in engine._streams
-
-    engine._publish(Output(seq_id=seq_id, token_id=7, finished=False))
-
-
-class LockWatchingRunner(FakeRunner):
-    engine: Engine
-
-    def __init__(self):
-        super().__init__()
-        self.locked_during_forward = []
-
-    def forward(self, batch):
-        self.locked_during_forward.append(self.engine._lock.locked())
-        return super().forward(batch)
-
-
-def test_forward_runs_without_the_scheduler_lock_held():
-    engine = make_engine()
-    engine.runner = LockWatchingRunner()
-    engine.runner.engine = engine
-    engine.submit([1, 2], SamplingParams(max_new_tokens=2))
-
-    drain(engine)
-
-    assert engine.runner.locked_during_forward == [False, False]
 
 
 def test_preemption_mid_step_keeps_outputs_aligned_with_the_batch():

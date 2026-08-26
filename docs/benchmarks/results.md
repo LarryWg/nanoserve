@@ -1,20 +1,20 @@
 | engine | rate (req/s) | tok/s | TTFT p50 | TTFT p99 | ITL p99 | attained |
 | --- | --- | --- | --- | --- | --- | --- |
-| nanoserve | 1 | 182 | 51 ms | 74 ms | 57 ms | 0.95 |
-| nanoserve | 2 | 332 | 54 ms | 79 ms | 66 ms | 1.73 |
-| nanoserve | 4 | 548 | 57 ms | 83 ms | 89 ms | 2.86 |
-| nanoserve | 8 | 682 | 63 ms | 2194 ms | 99 ms | 3.57 |
-| nanoserve | 16 | 720 | 124 ms | 9640 ms | 99 ms | 3.78 |
-| nanoserve | 32 | 736 | 1251 ms | 14317 ms | 91 ms | 3.86 |
-| vLLM | 1 | 193 | 24 ms | 42 ms | 5 ms | 1.01 |
-| vLLM | 2 | 385 | 23 ms | 43 ms | 6 ms | 2.01 |
-| vLLM | 4 | 765 | 23 ms | 42 ms | 7 ms | 3.99 |
-| vLLM | 8 | 1483 | 25 ms | 50 ms | 8 ms | 7.73 |
-| vLLM | 16 | 2754 | 30 ms | 63 ms | 13 ms | 14.37 |
-| vLLM | 32 | 4533 | 36 ms | 72 ms | 15 ms | 23.69 |
+| nanoserve | 1 | 210 | 27 ms | 29 ms | 51 ms | 0.94 |
+| nanoserve | 2 | 394 | 27 ms | 29 ms | 52 ms | 1.76 |
+| nanoserve | 4 | 697 | 27 ms | 28 ms | 61 ms | 3.12 |
+| nanoserve | 8 | 1128 | 27 ms | 353 ms | 79 ms | 5.05 |
+| nanoserve | 16 | 1331 | 28 ms | 6512 ms | 79 ms | 5.96 |
+| nanoserve | 32 | 1423 | 1210 ms | 10719 ms | 64 ms | 6.37 |
+| vLLM | 1 | 223 | 15 ms | 31 ms | 3 ms | 1.00 |
+| vLLM | 2 | 444 | 13 ms | 25 ms | 3 ms | 1.99 |
+| vLLM | 4 | 877 | 12 ms | 21 ms | 6 ms | 3.92 |
+| vLLM | 8 | 1706 | 12 ms | 21 ms | 8 ms | 7.63 |
+| vLLM | 16 | 3196 | 13 ms | 24 ms | 9 ms | 14.30 |
+| vLLM | 32 | 5369 | 16 ms | 28 ms | 11 ms | 24.02 |
 
 | engine | offline tok/s |
 | --- | --- |
-| nanoserve | 1068 |
-| vLLM | 5837 |
-| HF (static) | 378 |
+| nanoserve | 1040 |
+| vLLM | 6018 |
+| HF (static) | 375 |

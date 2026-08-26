@@ -29,6 +29,9 @@ class Request:
     prompt: str
     prompt_len: int
     output_len: int
+    # Filled in by whoever has the tokenizer. The in-process drivers submit
+    # token ids directly, so neither engine pays for tokenizing mid-run.
+    prompt_ids: list | None = None
 
 
 def download() -> str:
