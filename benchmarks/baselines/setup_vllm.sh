@@ -18,6 +18,12 @@ else
     VIRTUAL_ENV="$venv" uv pip install vllm ninja
 fi
 
+# vLLM's engine runs in a child process that shells out to ninja, so it has
+# to be findable on the system path, not just inside the venv.
+if [ -w /usr/local/bin ] && [ ! -e /usr/local/bin/ninja ]; then
+    ln -sf "$venv/bin/ninja" /usr/local/bin/ninja
+fi
+
 echo
 echo "vLLM installed:"
 "$venv/bin/python" -c "import vllm; print(vllm.__version__)"
