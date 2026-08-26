@@ -11,12 +11,17 @@ venv="$here/../.venv-vllm"
 
 # vLLM ships a torch built for CUDA 13, which will not initialise against
 # an older driver. Cheaper to say so now than after the install.
-driver_cuda=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
-if ! nvidia-smi 2>/dev/null | grep -q "CUDA Version: 13"; then
-    echo "This host reports driver $driver_cuda without CUDA 13; vLLM will not start." >&2
-    echo "Use a host whose nvidia-smi shows CUDA Version: 13.x." >&2
-    exit 1
-fi
+# Captured rather than piped: under pipefail a `grep -q` closes the pipe on
+# its first match, nvidia-smi dies of SIGPIPE, and the check inverts.
+smi=$(nvidia-smi 2>/dev/null || true)
+case "$smi" in
+    *"CUDA Version: 13"*) ;;
+    *)
+        echo "This host does not report CUDA 13; vLLM's torch build will not start." >&2
+        echo "$smi" | head -4 >&2
+        exit 1
+        ;;
+esac
 
 uv venv --python 3.12 "$venv"
 # ninja too: vLLM's flashinfer sampler compiles itself on first start and
