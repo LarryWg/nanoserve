@@ -1,13 +1,3 @@
-"""RMSNorm and RoPE must match transformers exactly.
-
-We compare against the real transformers implementations rather than a
-hand-written reference, because the thing being tested IS whether our reading
-of HF's conventions is correct. A reference we wrote ourselves would encode
-the same misunderstanding on both sides and pass.
-
-Layout bridge: nanoserve is flat [num_tokens, heads, head_dim]; HF is
-[batch, heads, seq, head_dim]. All comparisons use batch=1.
-"""
 import pytest
 import torch
 
@@ -25,7 +15,6 @@ EPS, THETA, MAX_POS = 1e-6, 10000.0, 512
 
 
 def _flat_to_hf(x: torch.Tensor) -> torch.Tensor:
-    """[T, H, D] -> [1, H, T, D]"""
     return x.transpose(0, 1).unsqueeze(0)
 
 
@@ -44,7 +33,6 @@ def test_rmsnorm_matches_hf(dtype):
 
 
 def test_rmsnorm_upcasts_to_fp32():
-    """A bf16-native implementation drifts here; ours must not."""
     torch.manual_seed(0)
     ours = RMSNorm(HIDDEN, EPS)
     x = torch.randn(4, HIDDEN, dtype=torch.bfloat16)
@@ -99,12 +87,6 @@ def test_apply_rope_matches_hf():
 
 
 def test_apply_rope_handles_noncontiguous_positions():
-    """The serving case: one flat batch holding tokens at unrelated positions.
-
-    Sequence A decoding at position 500 and sequence B prefilling at 0..3 share
-    a step. Rotating token i by position i would be correct for a rectangular
-    batch and wrong for every decode step here.
-    """
     torch.manual_seed(0)
     positions = torch.tensor([500, 0, 1, 2, 3])
     q = torch.randn(len(positions), HEADS, HEAD_DIM)
@@ -114,7 +96,6 @@ def test_apply_rope_handles_noncontiguous_positions():
     cos, sin = rope(positions)
     q_out, _ = apply_rope(q, k, cos, sin)
 
-    # Each row must equal that row rotated alone at its own position.
     for i, pos in enumerate(positions.tolist()):
         c, s = rope(torch.tensor([pos]))
         single, _ = apply_rope(q[i : i + 1], k[i : i + 1], c, s)
@@ -122,19 +103,14 @@ def test_apply_rope_handles_noncontiguous_positions():
 
 
 def test_rope_is_halves_not_interleaved():
-    """Pin the convention that silently produces fluent-but-wrong output.
-
-    At position 0 rotation is identity, so use position 1 and check that
-    dimension j mixes with j + head_dim/2 rather than with its neighbour.
-    """
     rope = RotaryEmbedding(HEAD_DIM, THETA, MAX_POS)
     cos, sin = rope(torch.tensor([1]))
     half = HEAD_DIM // 2
 
     q = torch.zeros(1, 1, HEAD_DIM)
-    q[0, 0, 0] = 1.0                     # excite dim 0 only
+    q[0, 0, 0] = 1.0
     out, _ = apply_rope(q, q.clone(), cos, sin)
 
     assert out[0, 0, 0] == pytest.approx(cos[0, 0].item())
-    assert out[0, 0, half] == pytest.approx(sin[0, half].item())   # partner dim
-    assert out[0, 0, 1] == pytest.approx(0.0)                      # neighbour untouched
+    assert out[0, 0, half] == pytest.approx(sin[0, half].item())
+    assert out[0, 0, 1] == pytest.approx(0.0)

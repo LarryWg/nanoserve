@@ -1,9 +1,3 @@
-"""The HTTP layer, with a fake model behind it.
-
-A real Engine and Scheduler run here; only the GPU and the tokenizer are
-faked. So these tests cover the whole path a request takes -- submit,
-schedule, step, detokenize, stream -- on a laptop.
-"""
 import asyncio
 import json
 import threading
@@ -22,8 +16,6 @@ EOS = 0
 
 
 class FakeTokenizer:
-    """One token per character, so tokens and text are easy to line up."""
-
     eos_token_id = EOS
 
     def encode(self, text: str) -> list[int]:
@@ -34,8 +26,6 @@ class FakeTokenizer:
 
 
 class FakeRunner:
-    """Replays a fixed script of tokens, the same one for every sequence."""
-
     def __init__(self, tokens: list[int]):
         self.tokens = tokens
         self.step = 0
@@ -53,11 +43,6 @@ NUM_BLOCKS = 16
 
 
 def make_client_and_engine(tokens=None, runner=None, **scheduler_kwargs):
-    """Build the server, and hand back the engine behind it.
-
-    Tests that only look at responses want the client; the ones that check
-    what the server left behind in the KV cache need the engine too.
-    """
     manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
     scheduler = Scheduler(block_manager=manager, **scheduler_kwargs)
     engine = Engine(scheduler, runner or FakeRunner(tokens or [ord("x")]))
@@ -69,15 +54,20 @@ def make_client(tokens=None, **scheduler_kwargs) -> TestClient:
 
 
 def sse_chunks(text: str) -> list[dict]:
-    """The JSON bodies of an SSE stream, minus the [DONE] terminator."""
     lines = [line[len("data: "):] for line in text.splitlines() if line.startswith("data: ")]
     assert lines[-1] == "[DONE]"
     return [json.loads(line) for line in lines[:-1]]
 
 
-def test_health():
+def test_health_reports_the_config_it_is_running():
     with make_client() as client:
-        assert client.get("/health").json() == {"status": "ok"}
+        body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["config"]["block_size"] == 8
+    assert body["config"]["num_blocks"] == NUM_BLOCKS
+    assert body["config"]["kv_cache_tokens"] == NUM_BLOCKS * 8
+    assert body["config"]["max_num_seqs"] == 64
 
 
 def test_completion_returns_the_generated_text():
@@ -111,7 +101,7 @@ def test_ignore_eos_keeps_generating():
         ).json()
 
     assert body["choices"][0]["finish_reason"] == "length"
-    assert len(body["choices"][0]["text"]) == 2   # the eos itself decodes to ""
+    assert len(body["choices"][0]["text"]) == 2
 
 
 def test_stream_sends_one_chunk_per_token():
@@ -151,8 +141,6 @@ def test_concurrent_requests_are_batched_together():
 
 
 class SplitTokenizer:
-    """Splits one character across two tokens, the way UTF-8 does."""
-
     eos_token_id = None
 
     def encode(self, text):
@@ -164,7 +152,7 @@ class SplitTokenizer:
 
 def test_detokenizer_holds_back_half_a_character():
     detok = Detokenizer(SplitTokenizer())
-    assert detok.add(2) == ""      # first half, nothing sendable yet
+    assert detok.add(2) == ""
     assert detok.add(3) == "é"
     assert detok.text == "é"
 
@@ -178,8 +166,6 @@ def test_models_lists_the_one_model_being_served():
 
 
 def test_a_finished_request_gives_its_blocks_back():
-    """The HTTP layer is the only caller in production, so the leak check
-    belongs here too: serve a request, then look at the cache."""
     client, engine = make_client_and_engine()
     with client:
         client.post("/v1/completions", json={"prompt": "hi", "max_tokens": 12})
@@ -190,15 +176,6 @@ def test_a_finished_request_gives_its_blocks_back():
 
 
 def test_hanging_up_mid_stream_frees_the_kv_blocks():
-    """The `finally` in the streaming path is what returns the blocks of a
-    request nobody is listening to any more. Without it every disconnect
-    leaks a sequence's worth of cache until the process restarts, and a
-    load test full of timeouts would wedge the server.
-
-    Driven through the SSE generator rather than an HTTP client, because
-    closing a TestClient response early deadlocks its portal -- a limit of
-    the test client, not of the server.
-    """
     manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
     scheduler = Scheduler(block_manager=manager)
     runner = FakeRunner([ord("x")])
@@ -212,10 +189,8 @@ def test_hanging_up_mid_stream_frees_the_kv_blocks():
         )
         stream = _Completion(engine, tokenizer, seq_id, 2, "nanoserve", ()).stream()
         chunk = await stream.__anext__()
-        await stream.aclose()                    # the client walked away
+        await stream.aclose()
 
-        # The abort is applied at the top of the next step, so give the loop
-        # a moment to notice rather than racing it.
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline and scheduler.running:
             await asyncio.sleep(0.01)
@@ -233,13 +208,6 @@ def test_hanging_up_mid_stream_frees_the_kv_blocks():
 
 
 class PairingRunner(FakeRunner):
-    """Holds the very first step until a second request is queued.
-
-    Two sequential posts never meet, and two racing threads meet only
-    sometimes. Stalling the first step until the queue has company makes
-    the overlap happen every time, so the assertion means something.
-    """
-
     def __init__(self, tokens, scheduler):
         super().__init__(tokens)
         self.scheduler = scheduler
@@ -249,8 +217,6 @@ class PairingRunner(FakeRunner):
     def forward(self, batch):
         self.batch_sizes.append(len(batch.seqs))
         if not self.waited and len(batch.seqs) < 2:
-            # Already together in this batch? Then there is nothing to wait
-            # for. Otherwise hold until the second request is queued.
             self.waited = True
             deadline = time.monotonic() + 5.0
             while time.monotonic() < deadline and not self.scheduler.waiting:
@@ -259,9 +225,6 @@ class PairingRunner(FakeRunner):
 
 
 def test_two_in_flight_requests_share_a_decode_batch():
-    """Continuous batching, end to end over HTTP. Requests that arrive
-    while another is generating join its batch instead of queueing behind
-    it, and that is the whole reason this engine exists."""
     manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
     scheduler = Scheduler(block_manager=manager)
     runner = PairingRunner([ord("x")], scheduler)
@@ -288,3 +251,59 @@ def test_two_in_flight_requests_share_a_decode_batch():
     assert bodies["first"]["choices"][0]["text"] == "xxxxxx"
     assert bodies["second"]["choices"][0]["text"] == "xxxxxx"
     assert max(runner.batch_sizes) == 2, runner.batch_sizes
+
+
+class PartialCharTokenizer:
+    eos_token_id = None
+
+    def encode(self, text):
+        return [1] * len(text)
+
+    def decode(self, token_ids):
+        return "é" if token_ids == [2, 3] else "\ufffd" * len(token_ids)
+
+
+def test_every_token_gets_a_chunk_even_a_half_finished_character():
+    manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
+    scheduler = Scheduler(block_manager=manager)
+    engine = Engine(scheduler, FakeRunner([2, 3]))
+    client = TestClient(create_app(engine, PartialCharTokenizer()))
+
+    with client:
+        with client.stream(
+            "POST", "/v1/completions",
+            json={"prompt": "hi", "max_tokens": 2, "stream": True},
+        ) as response:
+            chunks = sse_chunks(response.read().decode())
+
+    assert len(chunks) == 2
+    assert [c["choices"][0]["text"] for c in chunks] == ["", "é"]
+
+
+def test_metrics_report_what_the_server_measured():
+    client, engine = make_client_and_engine()
+    with client:
+        client.post("/v1/completions", json={"prompt": "hi", "max_tokens": 5})
+        body = client.get("/metrics").json()
+
+    assert body["finished"] == 1
+    record = body["requests"][0]
+    assert record["num_prompt_tokens"] == 2
+    assert record["num_output_tokens"] == 5
+    assert 0 <= record["ttft"] <= record["e2e"]
+
+
+def test_the_server_can_serve_decode_first():
+    from nanoserve.server import build_app  # noqa: F401
+
+    manager = BlockManager(num_blocks=NUM_BLOCKS, block_size=8)
+    scheduler = Scheduler(block_manager=manager, prefill_first=False)
+    engine = Engine(scheduler, FakeRunner([ord("x")]))
+    with TestClient(create_app(engine, FakeTokenizer())) as client:
+        body = client.post(
+            "/v1/completions", json={"prompt": "hi", "max_tokens": 3}
+        ).json()
+
+    assert body["choices"][0]["text"] == "xxx"
+    assert client.app is not None
+    assert engine.info()["prefill_first"] is False

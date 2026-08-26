@@ -1,9 +1,3 @@
-"""Weight loading failure paths, pinned with tiny synthetic checkpoints.
-
-The strictness of load_weights is what makes the HF equivalence tests
-trustworthy, so each way it can refuse a bad checkpoint gets a test here.
-All fixtures are one-layer models written with safetensors directly.
-"""
 import pytest
 import torch
 from safetensors.torch import save_file
@@ -34,8 +28,6 @@ def tiny_config(tie_word_embeddings=False):
 
 
 def save_checkpoint(path, state, shards=1):
-    """Write state to one or more shards; with shards=2 the keys are split
-    in half (or duplicated, if a key list is passed for both)."""
     if shards == 1:
         save_file(state, str(path / "model.safetensors"))
         return
@@ -50,7 +42,7 @@ def test_happy_path_loads_exact_values(tmp_path):
     donor = NanoForCausalLM(tiny_config())
     save_checkpoint(tmp_path, donor.state_dict())
 
-    torch.manual_seed(1)                      # different init, proves the copy
+    torch.manual_seed(1)
     model = NanoForCausalLM(tiny_config())
     load_weights(model, tmp_path)
 
@@ -99,7 +91,7 @@ def test_tied_checkpoint_with_equal_lm_head_is_dropped(tmp_path):
     state["lm_head.weight"] = state["model.embed_tokens.weight"].clone()
     save_checkpoint(tmp_path, state)
     model = NanoForCausalLM(tiny_config(tie_word_embeddings=True))
-    load_weights(model, tmp_path)             # no lm_head key error
+    load_weights(model, tmp_path)
 
 
 def test_tied_checkpoint_with_different_lm_head_raises(tmp_path):

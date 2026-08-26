@@ -1,21 +1,3 @@
-"""The model: a dense Llama/Qwen decoder, written to be read.
-
-Our own nn.Module, verified to match transformers token by token. Only the
-attention call knows whether this is a plain run or a served one. Every
-layer around it stays the same.
-
-Two structural choices, made once and held everywhere:
-
-1. FLAT layout. Activations are [num_tokens, ...] with no batch dim, and
-   positions arrive as an explicit int tensor. One sequence uses arange(T).
-   A batched engine packs many sequences into that same flat shape.
-
-2. HF faithful names. Submodules are named exactly as transformers names
-   them (model.layers.{i}.self_attn.q_proj.weight, ...). That makes weight
-   loading a strict load_state_dict instead of a handwritten key mapping.
-   A mapping we wrote ourselves could repeat the same misunderstanding as
-   the model and silently "pass". Strictness is the test's best friend.
-"""
 from __future__ import annotations
 
 import torch
@@ -28,34 +10,8 @@ from .layers import RMSNorm, RotaryEmbedding, apply_rope
 
 
 class Attention(nn.Module):
-    """GQA self-attention over a flat token stream.
-
-    Two attention paths share one set of projections. With no attn_metadata
-    it runs plain SDPA over one sequence with no cache, which works anywhere
-    including CPU and stays our definition of correct. With attn_metadata it
-    runs flash attn over the paged cache, which needs CUDA.
-
-    Projections, qk_norm and RoPE are the same in both paths, so the paged
-    one can be checked against the plain one number by number.
-
-    The three architectural ifs in this codebase all live here, driven by
-    ModelConfig rather than by arch-name string checks scattered around:
-      - attention_bias (Qwen2): q/k/v projections carry a bias; Llama/Qwen3
-        do not. o_proj never does, in every arch we support.
-      - qk_norm (Qwen3): a per-head RMSNorm over head_dim applied to q and k
-        BEFORE RoPE. Weight shape is [head_dim], so the norm normalizes each
-        head independently, not the whole [T, heads*dim] vector.
-      - GQA (all supported archs): num_kv_heads < num_attention_heads. SDPA
-        wants matching head counts, so k/v are repeated num_kv_groups times.
-        The repeat is materialized, not a view trick: a fused kernel can
-        replace this whole path later, and clarity beats cleverness until
-        then.
-    """
-
     def __init__(self, config: ModelConfig, layer_idx: int = 0):
         super().__init__()
-        # Only used to pick this layer's slice of the KV cache. It is not a
-        # weight, so it never shows up in the state dict.
         self.layer_idx = layer_idx
         self.num_heads = config.num_attention_heads
         self.num_kv_heads = config.num_key_value_heads
@@ -80,9 +36,9 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,          # [T, hidden]
-        cos: torch.Tensor,        # [T, head_dim]
-        sin: torch.Tensor,        # [T, head_dim]
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
         attn_metadata: AttentionMetadata | None = None,
     ) -> torch.Tensor:
         T = x.shape[0]
@@ -103,13 +59,6 @@ class Attention(nn.Module):
         return self.o_proj(out.reshape(T, self.num_heads * self.head_dim))
 
     def _sdpa(self, q, k, v) -> torch.Tensor:
-        """Plain attention: one sequence, whole context, no cache.
-
-        SDPA wants [heads, T, head_dim]. is_causal=True is the right mask
-        for one sequence at positions 0 to T minus 1. A flat batch holding
-        several sequences would need a mask per sequence instead, which is
-        what the varlen kernel gives us.
-        """
         q = q.transpose(0, 1)
         k = k.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
         v = v.transpose(0, 1).repeat_interleave(self.num_kv_groups, dim=0)
@@ -118,8 +67,6 @@ class Attention(nn.Module):
 
 
 class MLP(nn.Module):
-    """SwiGLU MLP: down(silu(gate(x)) * up(x)). No biases anywhere."""
-
     def __init__(self, config: ModelConfig):
         super().__init__()
         h, inter = config.hidden_size, config.intermediate_size
@@ -132,12 +79,6 @@ class MLP(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    """Pre-norm transformer block: RMSNorm -> attn -> +res -> RMSNorm -> MLP -> +res.
-
-    HF names are kept verbatim (input_layernorm, self_attn,
-    post_attention_layernorm, mlp) so checkpoints load strictly.
-    """
-
     def __init__(self, config: ModelConfig, layer_idx: int = 0):
         super().__init__()
         self.self_attn = Attention(config, layer_idx)
@@ -153,12 +94,6 @@ class DecoderLayer(nn.Module):
 
 
 class NanoModel(nn.Module):
-    """The backbone: embedding -> N decoder layers -> final norm.
-
-    Named `model` inside NanoForCausalLM so checkpoint keys line up with
-    HF's `model.embed_tokens.weight`, `model.layers.0...`, `model.norm.weight`.
-    """
-
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
@@ -179,25 +114,11 @@ class NanoModel(nn.Module):
 
 
 class NanoForCausalLM(nn.Module):
-    """Backbone + lm_head. This is the class the HF equivalence tests
-    compare against transformers' LlamaForCausalLM / Qwen2ForCausalLM /
-    Qwen3ForCausalLM.
-
-    forward takes the flat pair (input_ids, positions) and by default
-    returns logits for EVERY position [T, vocab]. A prefill only needs one
-    position per sequence, so it passes logits_indices and the head runs on
-    those rows alone. At 8192 tokens and a 151k vocab the logits nobody
-    reads would be 2.4 GB.
-    """
-
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
         self.model = NanoModel(config)
         if config.tie_word_embeddings:
-            # Qwen2.5-0.5B/1.5B and some Llama checkpoints omit lm_head and
-            # read out through the embedding matrix. Sharing the Parameter
-            # (not copying it) keeps memory honest and matches HF semantics.
             self.lm_head = None
         else:
             self.lm_head = nn.Linear(config.hidden_size, config.vocab_size,
@@ -205,10 +126,10 @@ class NanoForCausalLM(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,                    # [T] int64
-        positions: torch.Tensor,                    # [T] int64
+        input_ids: torch.Tensor,
+        positions: torch.Tensor,
         attn_metadata: AttentionMetadata | None = None,
-        logits_indices: torch.Tensor | None = None,  # [num_seqs] int64
+        logits_indices: torch.Tensor | None = None,
     ) -> torch.Tensor:
         hidden = self.model(input_ids, positions, attn_metadata)
         if logits_indices is not None:
@@ -219,22 +140,8 @@ class NanoForCausalLM(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_path: str, device: str = "cpu") -> "NanoForCausalLM":
-        """Build from a local HF checkpoint dir and load its weights.
-
-        Parameters are created under set_default_dtype(config.dtype) so the
-        model holds the checkpoint's dtype exactly: an fp32-held copy would
-        still pass the HF equivalence tests while testing nothing about bf16
-        serving numerics. The RoPE cos/sin caches stay fp32 (see layers.py),
-        unaffected by the default dtype.
-
-        The model is moved to `device` before loading, so load_state_dict
-        copies safetensors CPU bytes straight into the destination
-        parameters. No double host allocation when `device` is a GPU.
-        """
         if device.startswith("cuda") and not torch.cuda.is_available():
             raise ValueError(f"device={device!r} but CUDA is not available")
-        # Local import so a missing safetensors install only breaks weight
-        # loading, not `import nanoserve.model`.
         from .weights import load_weights
         config = ModelConfig.from_pretrained(model_path)
         prev = torch.get_default_dtype()

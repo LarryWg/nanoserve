@@ -69,6 +69,13 @@ message:
 - `test_server.py`: the HTTP layer end to end with a fake model behind it.
   A real engine and scheduler run, so a request goes all the way through
   submit, schedule, step, detokenize, and stream, on a laptop.
+- `test_bench.py`: the load-test harness, driven against the fake-model
+  server over ASGI. Pins the invariant the benchmarks rest on -- one SSE
+  chunk per token -- plus the Poisson schedule, the percentiles, failed
+  requests being recorded rather than swallowed, and saturation showing up
+  as a lower attained rate.
+- `test_gaps.py`: the block fragmentation arithmetic behind the README's
+  claim that a 256-token page wastes more KV cache than vLLM's 16.
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token

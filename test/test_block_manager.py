@@ -1,13 +1,8 @@
-"""Tests for BlockManager.
-
-The invariant pinned throughout: a new block appears exactly when the
-token count crosses a multiple of block_size.
-"""
 import pytest
 
 from nanoserve.block_manager import BlockManager, OutOfBlocks
 
-BS = 16  # block_size used throughout
+BS = 16
 
 
 def mk(num_blocks=8, block_size=BS):
@@ -22,24 +17,22 @@ def test_blocks_needed_is_ceil_div():
     assert m.blocks_needed(3 * BS) == 3
 
 def test_blocks_needed_zero_tokens():
-    # A zero-token allocation is a caller bug, not a free lunch.
     m = mk()
     with pytest.raises(ValueError):
         m.blocks_needed(0)
 
 def test_allocate_consumes_free_blocks():
     m = mk(num_blocks=8)
-    m.allocate(seq_id=1, num_tokens=BS + 1)          # needs 2 blocks
+    m.allocate(seq_id=1, num_tokens=BS + 1)
     assert m.num_free_blocks() == 6
     assert len(m.get_block_table(1)) == 2
 
 def test_allocate_raises_when_exhausted_and_is_atomic():
     m = mk(num_blocks=2)
-    m.allocate(1, BS)                                 # 1 block used
+    m.allocate(1, BS)
     before = m.num_free_blocks()
     with pytest.raises(OutOfBlocks):
-        m.allocate(2, 3 * BS)                         # needs 3, only 1 free
-    # Failed allocation must not leak partial state:
+        m.allocate(2, 3 * BS)
     assert m.num_free_blocks() == before
     with pytest.raises(KeyError):
         m.get_block_table(2)
@@ -50,53 +43,46 @@ def test_can_allocate_matches_allocate():
     assert m.can_allocate(2 * BS + 1) is False
 
 
-# The append_slot boundary is prompt-length-relative: prefill via allocate(),
-# then decode steps via append_slot(). A new block appears exactly when the
-# token count crosses a multiple of block_size.
-
 def test_decode_after_prompt_bs_minus_1_fills_last_slot_no_alloc():
     m = mk(num_blocks=8)
-    m.allocate(1, BS - 1)                             # 1 block, 15/16 slots
+    m.allocate(1, BS - 1)
     used_before = m.num_free_blocks()
-    m.append_slot(1)                                  # token 16 -> slot 16/16
-    assert m.num_free_blocks() == used_before         # NO new block
+    m.append_slot(1)
+    assert m.num_free_blocks() == used_before
     assert len(m.get_block_table(1)) == 1
 
 def test_decode_after_prompt_exactly_bs_allocates():
     m = mk(num_blocks=8)
-    m.allocate(1, BS)                                 # 1 full block
-    m.append_slot(1)                                  # token BS+1 -> new block
+    m.allocate(1, BS)
+    m.append_slot(1)
     assert len(m.get_block_table(1)) == 2
 
 def test_decode_after_prompt_bs_plus_1_no_alloc():
     m = mk(num_blocks=8)
-    m.allocate(1, BS + 1)                             # 2 blocks, second has 1/16
+    m.allocate(1, BS + 1)
     m.append_slot(1)
-    assert len(m.get_block_table(1)) == 2             # still 2
+    assert len(m.get_block_table(1)) == 2
 
 def test_append_slot_crossing_boundary_twice():
-    # March a sequence across a full block via repeated decode steps.
     m = mk(num_blocks=8)
     m.allocate(1, BS - 1)
-    for _ in range(BS + 2):                           # tokens BS .. 2*BS+1
+    for _ in range(BS + 2):
         m.append_slot(1)
-    assert len(m.get_block_table(1)) == 3             # 2*BS+1 tokens need 3 blocks
+    assert len(m.get_block_table(1)) == 3
 
 def test_append_slot_raises_out_of_blocks():
     m = mk(num_blocks=1)
     m.allocate(1, BS)
     with pytest.raises(OutOfBlocks):
         m.append_slot(1)
-    # The failed step must leave the sequence untouched.
     assert m.num_tokens(1) == BS
     assert len(m.get_block_table(1)) == 1
 
 
 def test_block_size_one_allocates_every_step():
-    # Edge case: every token fills its block, so every append allocates.
     m = mk(num_blocks=3, block_size=1)
     m.allocate(1, 2)
-    m.append_slot(1)                              # token 3 -> third block
+    m.append_slot(1)
     assert len(m.get_block_table(1)) == 3
     with pytest.raises(OutOfBlocks):
         m.append_slot(1)
@@ -118,7 +104,6 @@ def test_free_unknown_seq_raises():
         m.free(999)
 
 def test_double_free_raises():
-    # A silent double free would hand the same block to two sequences.
     m = mk()
     m.allocate(1, BS)
     m.free(1)
@@ -129,9 +114,9 @@ def test_freed_blocks_are_reusable_and_no_block_owned_twice():
     m = mk(num_blocks=2)
     m.allocate(1, 2 * BS)
     m.free(1)
-    m.allocate(2, 2 * BS)                             # must reuse both blocks
+    m.allocate(2, 2 * BS)
     t2 = m.get_block_table(2)
-    assert len(set(t2)) == 2                          # no duplicates in a table
+    assert len(set(t2)) == 2
 
 def test_one_block_one_owner_invariant():
     m = mk(num_blocks=4)
@@ -140,14 +125,13 @@ def test_one_block_one_owner_invariant():
     assert set(m.get_block_table(1)).isdisjoint(m.get_block_table(2))
 
 def test_disconnect_path_is_just_free():
-    # Simulated client disconnect mid-generation: the engine calls free(seq_id).
     m = mk(num_blocks=4)
     m.allocate(1, BS)
     m.allocate(2, BS)
     seq2_blocks = m.get_block_table(2)
-    m.free(1)                                         # disconnect
+    m.free(1)
     assert m.num_free_blocks() == 3
-    assert m.get_block_table(2) == seq2_blocks        # seq 2 untouched
+    assert m.get_block_table(2) == seq2_blocks
 
 
 def test_conservation_of_blocks():
@@ -156,3 +140,14 @@ def test_conservation_of_blocks():
     m.allocate(2, BS + 1)
     allocated = len(m.get_block_table(1)) + len(m.get_block_table(2))
     assert allocated + m.num_free_blocks() == 8
+
+
+def test_check_no_shared_blocks_catches_an_alias():
+    m = mk(num_blocks=4)
+    m.allocate(1, BS)
+    m.allocate(2, BS)
+    m.check_no_shared_blocks()
+
+    m._block_tables[2] = list(m._block_tables[1])
+    with pytest.raises(AssertionError, match="owned twice"):
+        m.check_no_shared_blocks()
