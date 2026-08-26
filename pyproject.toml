@@ -21,6 +21,11 @@ dev = [
     "pytest",
     "httpx2",  # what starlette's TestClient speaks through now
 ]
+# Plotting the benchmark results. Not installed by default: the charts are
+# drawn after a run, usually not on the machine that produced it.
+bench = [
+    "matplotlib",
+]
 # The paged attention kernels. Linux and CUDA only, and the wheel is built
 # for python 3.12, so anywhere else this group installs nothing.
 gpu = [
