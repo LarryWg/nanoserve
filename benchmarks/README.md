@@ -31,10 +31,11 @@ whose attained rate falls short of what was offered is describing a queue,
 not an engine. The latency numbers at that point are real but they are not
 measuring what they look like they measure.
 
-**Client CPU is reported too.** A python load generator can become the thing
-being measured. Above roughly 0.8 the client is a suspect, and `/metrics` on
-the nanoserve server is the cross-check: it reports TTFT as the engine timed
-it, from inside.
+**One timestamp per token, or the run is rejected.** Both drivers stamp
+tokens as the engine hands them back. A driver that reads output in bulk
+instead would give every token of a request the same timestamp, collapsing
+TTFT into end-to-end latency and ITL into zero; `metrics.py` refuses any run
+that looks like that rather than reporting it.
 
 ## Fairness
 
