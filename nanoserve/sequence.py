@@ -8,9 +8,9 @@ The Sequence owns token ids and metrics. It does NOT own its block table --
 BlockManager does (keyed by seq_id), so there is exactly one source of truth
 for physical block ownership.
 """
+import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
-import time
 
 
 class SeqStatus(Enum):
@@ -67,7 +67,18 @@ class Sequence:
 
     @property
     def last_token(self) -> int:
-        return self.output_token_ids[-1] if self.output_token_ids else self.prompt_token_ids[-1]
+        if self.output_token_ids:
+            return self.output_token_ids[-1]
+        return self.prompt_token_ids[-1]
+
+    @property
+    def is_stopped(self) -> bool:
+        """Stop condition, checked after each generated token."""
+        if len(self.output_token_ids) >= self.sampling.max_new_tokens:
+            return True
+        if not self.output_token_ids:
+            return False
+        return self.output_token_ids[-1] in self.sampling.stop_token_ids
 
     def on_prefilled(self) -> None:
         self.num_computed_tokens = self.num_tokens
@@ -89,9 +100,3 @@ class Sequence:
         self.finish_time = now
         self.status = SeqStatus.FINISHED
 
-    @property
-    def is_stopped(self) -> bool:
-        """Stop condition, checked after each generated token."""
-        if len(self.output_token_ids) >= self.sampling.max_new_tokens:
-            return True
-        return bool(self.output_token_ids) and self.output_token_ids[-1] in self.sampling.stop_token_ids

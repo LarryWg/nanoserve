@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 
 # Dense decoder-only models we have checked token-for-token against HF.
-# Anything else fails loudly (see DESIGN.md non-goals).
+# Anything else fails loudly rather than running unverified.
 SUPPORTED_ARCHITECTURES = {
     "LlamaForCausalLM",
     "Qwen2ForCausalLM",

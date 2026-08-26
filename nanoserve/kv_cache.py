@@ -18,10 +18,9 @@ from collections.abc import Iterable
 import torch
 
 # block_size is the page size the kernel sees, so the kernel's limit lands
-# here. flash attn 2.8.3 refuses any page size that 256 does not divide.
-# Measured, on both of its paged entry points. vLLM uses 16 because it
-# patches the kernel. The cost of a big page is wasted space: a sequence
-# leaves half a block empty on average.
+# here: flash attn 2.8.3 refuses any page size that 256 does not divide, on
+# both of its paged entry points. vLLM uses 16 because it patches the kernel.
+# A big page costs wasted space, half a block per sequence on average.
 BLOCK_SIZE_MULTIPLE = 256
 
 
@@ -73,12 +72,13 @@ class KVCache:
         Decode skips this. Its kernel appends the new key and value itself.
         """
         # Folding blocks and offsets into one axis makes this a single copy.
-        flat = (self.num_slots, k.shape[1], k.shape[2])
-        self.k[layer_idx].view(flat).index_copy_(0, slot_mapping, k)
-        self.v[layer_idx].view(flat).index_copy_(0, slot_mapping, v)
+        flat_shape = (self.num_slots, k.shape[1], k.shape[2])
+        self.k[layer_idx].view(flat_shape).index_copy_(0, slot_mapping, k)
+        self.v[layer_idx].view(flat_shape).index_copy_(0, slot_mapping, v)
 
     def nbytes(self) -> int:
-        return self.k.numel() * self.k.element_size() * 2
+        """Total bytes held, keys and values together."""
+        return 2 * self.k.numel() * self.k.element_size()
 
 
 def bytes_per_block(

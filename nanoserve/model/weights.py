@@ -41,7 +41,7 @@ def load_weights(model: torch.nn.Module, model_path: str | Path) -> None:
     # load_state_dict copy_()s into the existing parameters, which were
     # created in config.dtype (see NanoForCausalLM.from_pretrained), so the
     # cast is a no-op safety net rather than the mechanism.
-    state = {k: v.to(model.config.dtype) for k, v in state.items()}
+    state = {k: v.to(config.dtype) for k, v in state.items()}
 
     if config.tie_word_embeddings and "lm_head.weight" in state:
         # The module has no lm_head to receive it; strict load would fail on

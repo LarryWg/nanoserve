@@ -31,9 +31,9 @@ import time
 from collections import deque
 from dataclasses import dataclass
 
+from .model_runner import ModelRunner
 from .scheduler import Scheduler
 from .sequence import SamplingParams, Sequence
-from .model_runner import ModelRunner
 
 # How long an idle loop sleeps before looking again. Only reached when there
 # is no work at all, and submit() wakes it early, so it costs nothing.
@@ -64,6 +64,16 @@ class RequestMetrics:
     num_output_tokens: int
     ttft: float          # arrival to first token
     e2e: float           # arrival to last token
+
+    @classmethod
+    def from_sequence(cls, seq: Sequence) -> RequestMetrics:
+        return cls(
+            seq_id=seq.seq_id,
+            num_prompt_tokens=len(seq.prompt_token_ids),
+            num_output_tokens=len(seq.output_token_ids),
+            ttft=seq.first_token_time - seq.arrival_time,
+            e2e=seq.finish_time - seq.arrival_time,
+        )
 
 
 class Engine:
@@ -141,7 +151,7 @@ class Engine:
                 stopped = seq.is_stopped
                 if stopped:
                     self.scheduler.finish(seq, now)
-                    self._metrics.append(_metrics_for(seq))
+                    self._metrics.append(RequestMetrics.from_sequence(seq))
                 outputs.append(Output(seq.seq_id, token, stopped))
         return outputs
 
@@ -182,7 +192,9 @@ class Engine:
         straight off the queue.
         """
         self._event_loop = event_loop
-        self._thread = threading.Thread(target=self._loop, name="nanoserve-engine", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="nanoserve-engine", daemon=True
+        )
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -219,13 +231,3 @@ class Engine:
         for seq_id in self._aborted:
             self.scheduler.abort(seq_id, now)
         self._aborted.clear()
-
-
-def _metrics_for(seq) -> RequestMetrics:
-    return RequestMetrics(
-        seq_id=seq.seq_id,
-        num_prompt_tokens=len(seq.prompt_token_ids),
-        num_output_tokens=len(seq.output_token_ids),
-        ttft=seq.first_token_time - seq.arrival_time,
-        e2e=seq.finish_time - seq.arrival_time,
-    )

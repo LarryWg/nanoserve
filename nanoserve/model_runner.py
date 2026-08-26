@@ -20,14 +20,13 @@ So num_computed_tokens already counts the token being fed when forward runs
 a decode step. That off by one is where paged decode bugs hide, so it is
 spelled out again where it is used.
 
-Tensor parallelism is not written yet. The plan, using torch.distributed
-with the NCCL backend:
-  attention shards heads, qkv_proj is column parallel and o_proj is row
-    parallel, with one all_reduce after o_proj
-  the mlp shards the same way, with one all_reduce after down_proj
-  that is two all_reduces per layer, worth deriving on paper first
-  embedding and lm_head are copied on every rank, which is fine at this size
-  rank 0 schedules and broadcasts the batch metadata each step
+Tensor parallelism is not written yet. The plan, over torch.distributed on
+the NCCL backend: attention shards heads, with qkv_proj column parallel and
+o_proj row parallel; the MLP shards the same way. That is two all_reduces per
+layer, one after o_proj and one after down_proj, and it is worth deriving on
+paper before writing it. Embedding and lm_head stay replicated on every rank,
+which is cheap at this size. Rank 0 schedules and broadcasts the batch
+metadata each step.
 """
 from __future__ import annotations
 
@@ -37,6 +36,8 @@ from .block_manager import BlockManager
 from .kv_cache import KVCache, bytes_per_block, pad_block_tables, slot_mapping
 from .model.attention import AttentionMetadata
 from .model.model import NanoForCausalLM
+from .scheduler import ScheduledBatch
+from .sequence import Sequence
 
 
 class ModelRunner:
@@ -99,32 +100,8 @@ class ModelRunner:
                 "pass num_blocks explicitly for CPU runs"
             )
         tokens = min(self.max_num_batched_tokens, self.config.max_position_embeddings)
-        probe = self._new_cache(num_blocks=-(-tokens // self.block_size))
-        torch.cuda.synchronize(self.device)
-        resident = torch.cuda.memory_allocated(self.device)  # weights + probe
-        torch.cuda.reset_peak_memory_stats(self.device)
+        activation_peak = self._measure_activation_peak(tokens)
 
-        # One sequence this long is the biggest prefill the budget allows,
-        # so it is also the biggest activation footprint.
-        meta = AttentionMetadata(
-            is_prefill=True,
-            kv_cache=probe,
-            slot_mapping=self._tensor(range(tokens), torch.int64),
-            cu_seqlens=self._tensor([0, tokens], torch.int32),
-            max_seqlen=tokens,
-        )
-        with torch.inference_mode():
-            self.model(
-                self._tensor([0] * tokens, torch.int64),
-                self._tensor(range(tokens), torch.int64),
-                meta,
-                self._tensor([tokens - 1], torch.int64),
-            )
-        torch.cuda.synchronize(self.device)
-        activation_peak = torch.cuda.max_memory_allocated(self.device) - resident
-
-        del probe, meta
-        torch.cuda.empty_cache()
         free, total = torch.cuda.mem_get_info(self.device)
         budget = free - (1.0 - utilization) * total - activation_peak
         per_block = bytes_per_block(
@@ -143,8 +120,42 @@ class ModelRunner:
             )
         return num_blocks
 
+    def _measure_activation_peak(self, tokens: int) -> int:
+        """Bytes one worst-case prefill costs on top of what is resident.
+
+        A single sequence this long is the biggest batch the token budget
+        allows, so it is also the biggest activation footprint. The probe
+        cache exists only to give attention somewhere to write; it is freed
+        before the caller reads free VRAM, so it does not skew the budget.
+        """
+        probe = self._new_cache(num_blocks=-(-tokens // self.block_size))
+        torch.cuda.synchronize(self.device)
+        resident = torch.cuda.memory_allocated(self.device)  # weights + probe
+        torch.cuda.reset_peak_memory_stats(self.device)
+
+        meta = AttentionMetadata(
+            is_prefill=True,
+            kv_cache=probe,
+            slot_mapping=self._tensor(range(tokens), torch.int64),
+            cu_seqlens=self._tensor([0, tokens], torch.int32),
+            max_seqlen=tokens,
+        )
+        with torch.inference_mode():
+            self.model(
+                self._tensor([0] * tokens, torch.int64),
+                self._tensor(range(tokens), torch.int64),
+                meta,
+                self._tensor([tokens - 1], torch.int64),
+            )
+        torch.cuda.synchronize(self.device)
+        peak = torch.cuda.max_memory_allocated(self.device) - resident
+
+        del probe, meta
+        torch.cuda.empty_cache()
+        return peak
+
     @torch.inference_mode()
-    def forward(self, batch) -> torch.Tensor:
+    def forward(self, batch: ScheduledBatch) -> torch.Tensor:
         """Run one step for a ScheduledBatch.
 
         Returns logits [num_seqs, vocab], one row per sequence, for the
@@ -154,11 +165,12 @@ class ModelRunner:
             return self._forward_prefill(batch.seqs)
         return self._forward_decode(batch.seqs)
 
-    def _forward_prefill(self, seqs) -> torch.Tensor:
+    def _forward_prefill(self, seqs: list[Sequence]) -> torch.Tensor:
         input_ids: list[int] = []
         positions: list[int] = []
         slots: list[int] = []
         cu_seqlens = [0]
+        max_seqlen = 0
         for seq in seqs:
             # An evicted sequence prefills its prompt plus the tokens it
             # already generated, so this is token_ids.
@@ -168,13 +180,14 @@ class ModelRunner:
             positions.extend(range(len(tokens)))
             slots.extend(slot_mapping(table, range(len(tokens)), self.block_size))
             cu_seqlens.append(cu_seqlens[-1] + len(tokens))
+            max_seqlen = max(max_seqlen, len(tokens))
 
         meta = AttentionMetadata(
             is_prefill=True,
             kv_cache=self.kv_cache,
             slot_mapping=self._tensor(slots, torch.int64),
             cu_seqlens=self._tensor(cu_seqlens, torch.int32),
-            max_seqlen=max(len(seq.token_ids) for seq in seqs),
+            max_seqlen=max_seqlen,
         )
         # cu_seqlens[1:] holds the end of each sequence, so end minus 1 is
         # its last token, the only row the head has to compute.
@@ -186,7 +199,7 @@ class ModelRunner:
             logits_indices,
         )
 
-    def _forward_decode(self, seqs) -> torch.Tensor:
+    def _forward_decode(self, seqs: list[Sequence]) -> torch.Tensor:
         input_ids: list[int] = []
         # num_computed_tokens already counts the token this step feeds,
         # because the scheduler reserved its slot before calling us. So a
@@ -219,7 +232,7 @@ class ModelRunner:
         """
         return torch.tensor(list(data), dtype=dtype, device=self.device)
 
-    def sample(self, logits: torch.Tensor, batch) -> list[int]:
+    def sample(self, logits: torch.Tensor, batch: ScheduledBatch) -> list[int]:
         """Pick one token per sequence, in batch.seqs order."""
         return sample_tokens(
             logits,

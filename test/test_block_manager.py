@@ -156,3 +156,17 @@ def test_conservation_of_blocks():
     m.allocate(2, BS + 1)
     allocated = len(m.get_block_table(1)) + len(m.get_block_table(2))
     assert allocated + m.num_free_blocks() == 8
+
+
+def test_check_no_shared_blocks_catches_an_alias():
+    """The scanning check is the safety net for the refcounting that prefix
+    caching will bring, so it has to actually fire when a block lands in two
+    tables. The cheap check on the allocation path only counts."""
+    m = mk(num_blocks=4)
+    m.allocate(1, BS)
+    m.allocate(2, BS)
+    m.check_no_shared_blocks()
+
+    m._block_tables[2] = list(m._block_tables[1])      # plant an alias
+    with pytest.raises(AssertionError, match="owned twice"):
+        m.check_no_shared_blocks()

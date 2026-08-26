@@ -71,7 +71,8 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
     Both are passed in rather than built here, so tests can serve a fake
     model without a GPU.
     """
-    stop_ids = tuple(i for i in [getattr(tokenizer, "eos_token_id", None)] if i is not None)
+    eos_id = getattr(tokenizer, "eos_token_id", None)
+    stop_ids: tuple[int, ...] = () if eos_id is None else (eos_id,)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -115,10 +116,19 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
             # The prompt is bigger than a step or bigger than the cache.
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        ctx = _Completion(engine, tokenizer, seq_id, len(prompt_ids), model_name, stop_ids)
+        completion = _Completion(
+            engine=engine,
+            tokenizer=tokenizer,
+            seq_id=seq_id,
+            num_prompt_tokens=len(prompt_ids),
+            model_name=model_name,
+            stop_ids=stop_ids,
+        )
         if body.stream:
-            return StreamingResponse(ctx.stream(), media_type="text/event-stream")
-        return await ctx.collect()
+            return StreamingResponse(
+                completion.stream(), media_type="text/event-stream"
+            )
+        return await completion.collect()
 
     return app
 
@@ -126,7 +136,15 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
 class _Completion:
     """One in-flight request, in either of its two shapes."""
 
-    def __init__(self, engine, tokenizer, seq_id, num_prompt_tokens, model_name, stop_ids):
+    def __init__(
+        self,
+        engine: Engine,
+        tokenizer,
+        seq_id: int,
+        num_prompt_tokens: int,
+        model_name: str,
+        stop_ids: tuple[int, ...],
+    ):
         self.engine = engine
         self.seq_id = seq_id
         self.num_prompt_tokens = num_prompt_tokens

@@ -196,8 +196,9 @@ class NanoForCausalLM(nn.Module):
         self.model = NanoModel(config)
         if config.tie_word_embeddings:
             # Qwen2.5-0.5B/1.5B and some Llama checkpoints omit lm_head and
-            # read out through the embedding matrix. Sharing the Parameter
-            # (not copying it) keeps memory honest and matches HF semantics.
+            # read out through the embedding matrix. No head module at all,
+            # so forward() reads embed_tokens.weight directly and there is
+            # no second copy of a [vocab, hidden] matrix to keep in sync.
             self.lm_head = None
         else:
             self.lm_head = nn.Linear(config.hidden_size, config.vocab_size,

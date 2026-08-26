@@ -1,22 +1,26 @@
-"""Paged KV cache block manager.
+"""Paged KV cache block manager: who owns which physical block.
 
-Design decisions:
-- Free list is a plain stack: physical block order is irrelevant because paged
-  attention gathers through the block table; contiguity buys nothing.
-- The manager OWNS all block tables (seq_id -> table). Sequences get read-only
-  copies. Every exit path (finish, preempt, disconnect) is exactly free(seq_id).
-- Allocation invariant: a new block is allocated in append_slot when the
-  existing token count N satisfies N % block_size == 0.
-- v1 invariant: one block, one owner. No refcounts. All returns to the free
-  list go through _release_block() so prefix-caching refcounts later land in
-  exactly one place.
+This is the bookkeeping half of paging. KVCache holds the memory, this file
+decides which sequence gets which block id, and the two share nothing but
+integers.
+
+The manager owns every block table, keyed by seq_id, and hands out read-only
+copies. One source of truth for ownership means finish, preemption and client
+disconnect are all the same call: free(seq_id).
+
+One block has exactly one owner. There are no refcounts, which is most of why
+this file is short; prefix caching is where they arrive, and every return to
+the free list already goes through _release_block() so they land in one place.
+
+The free list is a plain stack. Paged attention gathers through the block
+table, so physical order buys nothing.
 """
 from __future__ import annotations
 
 
 class OutOfBlocks(Exception):
-    """Raised when an allocation cannot be satisfied. Caller (scheduler)
-    decides whether to preempt."""
+    """Raised when an allocation cannot be satisfied. The scheduler decides
+    whether to preempt."""
 
 
 class BlockManager:
@@ -28,6 +32,7 @@ class BlockManager:
         self._free_blocks: list[int] = list(range(num_blocks))
         self._block_tables: dict[int, list[int]] = {}
         self._token_counts: dict[int, int] = {}
+        self._num_allocated = 0
 
     def num_free_blocks(self) -> int:
         return len(self._free_blocks)
@@ -57,7 +62,8 @@ class BlockManager:
             raise OutOfBlocks(f"need {needed}, have {len(self._free_blocks)}")
         self._block_tables[seq_id] = [self._free_blocks.pop() for _ in range(needed)]
         self._token_counts[seq_id] = num_tokens
-        self._check_invariants()
+        self._num_allocated += needed
+        self._check_accounting()
 
     def append_slot(self, seq_id: int) -> None:
         """Account for one new decode token. Allocates a new physical block
@@ -68,8 +74,9 @@ class BlockManager:
             if not self._free_blocks:
                 raise OutOfBlocks("no free block for decode step")
             self._block_tables[seq_id].append(self._free_blocks.pop())
+            self._num_allocated += 1
         self._token_counts[seq_id] = token_count + 1
-        self._check_invariants()
+        self._check_accounting()
 
     def free(self, seq_id: int) -> None:
         """The single cleanup path: finish, preemption, and client disconnect
@@ -77,20 +84,37 @@ class BlockManager:
         double free as a bug, never a no-op)."""
         table = self._block_tables.pop(seq_id)
         del self._token_counts[seq_id]
+        self._num_allocated -= len(table)
         for block_id in table:
             self._release_block(block_id)
-        self._check_invariants()
+        self._check_accounting()
 
     def _release_block(self, block_id: int) -> None:
         """Sole return path to the free list. When prefix caching arrives,
         this becomes decref-and-return-if-zero; nothing else changes."""
         self._free_blocks.append(block_id)
 
-    def _check_invariants(self) -> None:
-        allocated = sum(len(t) for t in self._block_tables.values())
-        assert allocated + len(self._free_blocks) == self.num_blocks, "block leak/dup"
+    def _check_accounting(self) -> None:
+        """Every block is either owned or free, exactly once.
+
+        Runs on every allocation, so it counts rather than scans. A decode
+        step calls append_slot once per running sequence, and a scan over
+        thousands of blocks there would cost more than the forward pass.
+        check_no_shared_blocks() is the scanning version, for tests.
+        """
+        assert (
+            self._num_allocated + len(self._free_blocks) == self.num_blocks
+        ), "block leak/dup"
+
+    def check_no_shared_blocks(self) -> None:
+        """Assert no block id appears in two places at once.
+
+        O(num_blocks), so it is not on the allocation path. Tests call it
+        after the sequences of operations where aliasing could creep in.
+        """
         seen: set[int] = set(self._free_blocks)
-        for table in self._block_tables.values():
-            for b in table:
-                assert b not in seen, f"block {b} owned twice"
-                seen.add(b)
+        assert len(seen) == len(self._free_blocks), "duplicate in the free list"
+        for seq_id, table in self._block_tables.items():
+            for block_id in table:
+                assert block_id not in seen, f"block {block_id} owned twice"
+                seen.add(block_id)
