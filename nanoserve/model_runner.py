@@ -19,13 +19,7 @@ class ModelRunner:
         gpu_memory_utilization: float = 0.9,
         max_num_batched_tokens: int = 8192,
         num_blocks: int | None = None,
-        tp_rank: int = 0,
-        tp_size: int = 1,
     ):
-        if tp_size != 1:
-            raise NotImplementedError("tensor parallelism is not implemented yet")
-        self.tp_rank = tp_rank
-        self.tp_size = tp_size
         self.device = torch.device(device)
         self.block_size = block_size
         self.max_num_batched_tokens = max_num_batched_tokens
