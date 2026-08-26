@@ -1,10 +1,3 @@
-"""The load-test harness, checked against a fake model.
-
-A benchmark that is wrong is worse than no benchmark, because the number
-still looks like a number. The server takes an injected engine, so the
-whole client path can be exercised on a laptop before any GPU time is
-spent on it.
-"""
 import asyncio
 
 import httpx
@@ -20,8 +13,6 @@ from test_server import EOS, FakeRunner, FakeTokenizer
 
 
 def run_against_fake_server(requests, rate=float("inf"), tokens=None):
-    """Drive the real client against the real server over ASGI."""
-
     async def main():
         manager = BlockManager(num_blocks=64, block_size=8)
         scheduler = Scheduler(block_manager=manager)
@@ -49,7 +40,7 @@ def make_requests(*lengths):
 def test_poisson_schedule_has_the_rate_it_was_asked_for():
     offsets = bench.poisson_schedule(rate=4.0, count=20_000, seed=1)
     mean_gap = offsets[-1] / (len(offsets) - 1)
-    assert 0.24 < mean_gap < 0.26          # 1/4 second between arrivals
+    assert 0.24 < mean_gap < 0.26
     assert offsets == sorted(offsets)
 
 
@@ -61,12 +52,10 @@ def test_percentile_returns_a_value_that_happened():
     values = [float(i) for i in range(1, 101)]
     assert bench.percentile(values, 50) == 50.0
     assert bench.percentile(values, 99) == 100.0
-    assert bench.percentile([], 50) != bench.percentile([], 50)   # nan
+    assert bench.percentile([], 50) != bench.percentile([], 50)
 
 
 def test_chunk_count_equals_the_tokens_that_were_asked_for():
-    """The invariant the whole benchmark rests on. If a token can arrive
-    without its own chunk, every ITL and throughput number is wrong."""
     result = run_against_fake_server(make_requests(3, 7, 5))
 
     assert result["summary"]["num_failed"] == 0
@@ -75,9 +64,6 @@ def test_chunk_count_equals_the_tokens_that_were_asked_for():
 
 
 def test_ignore_eos_holds_the_output_length_fixed():
-    """The fairness control that makes two engines comparable at all. The
-    runner emits EOS on its second token; the request must run to its full
-    length anyway, or engines would be measured on different work."""
     result = run_against_fake_server(
         make_requests(6), tokens=[ord("a"), EOS, ord("b")]
     )
@@ -97,12 +83,10 @@ def test_timings_come_back_ordered_and_positive():
 
 
 def test_a_failed_request_is_recorded_not_swallowed():
-    """A run with errors in it must not look like a clean fast run."""
     requests = make_requests(4)
 
     async def main():
         async with httpx.AsyncClient(timeout=httpx.Timeout(0.01)) as client:
-            # Nothing is listening on this port.
             return await bench.benchmark(
                 "http://127.0.0.1:9/v1/completions", requests, float("inf"), client=client
             )
@@ -115,8 +99,6 @@ def test_a_failed_request_is_recorded_not_swallowed():
 
 
 def test_summary_reports_attained_rate_next_to_offered():
-    """Saturation has to be visible. A run that could not keep up shows a
-    lower attained rate, rather than only a worse latency."""
     result = run_against_fake_server(make_requests(2, 2), rate=1000.0)
     summary = result["summary"]
 

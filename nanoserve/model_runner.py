@@ -1,33 +1,3 @@
-"""Model execution: turn a scheduled batch into logits, then into tokens.
-
-The runner owns the weights, the paged KV cache, and the BlockManager for
-that cache. It is the only object that can see how much VRAM is free once
-the weights are loaded, so it sizes the cache and builds the manager. The
-scheduler is handed runner.block_manager and decides who gets which block.
-
-A prefill step runs every token of each admitted sequence, packed flat, and
-returns logits for the last position of each one. A decode step runs one
-token per running sequence and reads the rest of the context from the cache.
-
-The caller drives one step in this order:
-
-    batch = scheduler.step()      # reserves this step's slot
-    logits = runner.forward(batch)
-    tokens = runner.sample(logits, batch)
-    seq.on_prefilled() / seq.on_token(tok)
-
-So num_computed_tokens already counts the token being fed when forward runs
-a decode step. That off by one is where paged decode bugs hide, so it is
-spelled out again where it is used.
-
-Tensor parallelism is not written yet. The plan, over torch.distributed on
-the NCCL backend: attention shards heads, with qkv_proj column parallel and
-o_proj row parallel; the MLP shards the same way. That is two all_reduces per
-layer, one after o_proj and one after down_proj, and it is worth deriving on
-paper before writing it. Embedding and lm_head stay replicated on every rank,
-which is cheap at this size. Rank 0 schedules and broadcasts the batch
-metadata each step.
-"""
 from __future__ import annotations
 
 import torch
@@ -44,7 +14,7 @@ class ModelRunner:
     def __init__(
         self,
         model_path: str,
-        block_size: int = 256,   # the smallest page the kernel accepts
+        block_size: int = 256,
         device: str = "cuda",
         gpu_memory_utilization: float = 0.9,
         max_num_batched_tokens: int = 8192,
@@ -53,8 +23,6 @@ class ModelRunner:
         tp_size: int = 1,
     ):
         if tp_size != 1:
-            # TODO: shard the weights while loading them, so no rank ever
-            # holds a full one.
             raise NotImplementedError("tensor parallelism is not implemented yet")
         self.tp_rank = tp_rank
         self.tp_size = tp_size
@@ -83,17 +51,6 @@ class ModelRunner:
         )
 
     def _profile_num_blocks(self, utilization: float) -> int:
-        """How many blocks fit? Measure it, do not guess it.
-
-        Three things share the GPU: the weights, the activations, and the
-        cache. Activations peak on the biggest prefill the scheduler can
-        send, and nobody can work that out on paper for any model, so we run
-        one worst case prefill and read the peak from the allocator.
-
-        The peak comes from torch and the free VRAM comes from the driver,
-        and the two do not count quite the same bytes. utilization is the
-        margin for the rest, so keep it under 1.0.
-        """
         if self.device.type != "cuda":
             raise ValueError(
                 f"cannot profile VRAM on device {self.device}, "
@@ -121,16 +78,9 @@ class ModelRunner:
         return num_blocks
 
     def _measure_activation_peak(self, tokens: int) -> int:
-        """Bytes one worst-case prefill costs on top of what is resident.
-
-        A single sequence this long is the biggest batch the token budget
-        allows, so it is also the biggest activation footprint. The probe
-        cache exists only to give attention somewhere to write; it is freed
-        before the caller reads free VRAM, so it does not skew the budget.
-        """
         probe = self._new_cache(num_blocks=-(-tokens // self.block_size))
         torch.cuda.synchronize(self.device)
-        resident = torch.cuda.memory_allocated(self.device)  # weights + probe
+        resident = torch.cuda.memory_allocated(self.device)
         torch.cuda.reset_peak_memory_stats(self.device)
 
         meta = AttentionMetadata(
@@ -156,11 +106,6 @@ class ModelRunner:
 
     @torch.inference_mode()
     def forward(self, batch: ScheduledBatch) -> torch.Tensor:
-        """Run one step for a ScheduledBatch.
-
-        Returns logits [num_seqs, vocab], one row per sequence, for the
-        position it is about to sample from. Rows follow batch.seqs order.
-        """
         if batch.is_prefill:
             return self._forward_prefill(batch.seqs)
         return self._forward_decode(batch.seqs)
@@ -172,8 +117,6 @@ class ModelRunner:
         cu_seqlens = [0]
         max_seqlen = 0
         for seq in seqs:
-            # An evicted sequence prefills its prompt plus the tokens it
-            # already generated, so this is token_ids.
             tokens = seq.token_ids
             table = self.block_manager.get_block_table(seq.seq_id)
             input_ids.extend(tokens)
@@ -189,8 +132,6 @@ class ModelRunner:
             cu_seqlens=self._tensor(cu_seqlens, torch.int32),
             max_seqlen=max_seqlen,
         )
-        # cu_seqlens[1:] holds the end of each sequence, so end minus 1 is
-        # its last token, the only row the head has to compute.
         logits_indices = self._tensor([end - 1 for end in cu_seqlens[1:]], torch.int64)
         return self.model(
             self._tensor(input_ids, torch.int64),
@@ -201,11 +142,6 @@ class ModelRunner:
 
     def _forward_decode(self, seqs: list[Sequence]) -> torch.Tensor:
         input_ids: list[int] = []
-        # num_computed_tokens already counts the token this step feeds,
-        # because the scheduler reserved its slot before calling us. So a
-        # sequence with n computed tokens has n minus 1 tokens cached, and
-        # feeds a token sitting at position n minus 1. A count and a
-        # position that happen to be the same number, so one list does both.
         cached_lens: list[int] = []
         tables: list[list[int]] = []
         for seq in seqs:
@@ -220,20 +156,12 @@ class ModelRunner:
             block_tables=self._tensor(pad_block_tables(tables), torch.int32),
             cache_seqlens=self._tensor(cached_lens, torch.int32),
         )
-        # Every decode token is already a last position, so no indices.
         return self.model(self._tensor(input_ids, torch.int64), positions, meta)
 
     def _tensor(self, data, dtype: torch.dtype) -> torch.Tensor:
-        """Build the step metadata on the host, then move it in one copy.
-
-        Building a tensor per sequence would mean dozens of tiny transfers
-        per step. If profiling ever says this matters, pinned host buffers
-        would go here.
-        """
         return torch.tensor(list(data), dtype=dtype, device=self.device)
 
     def sample(self, logits: torch.Tensor, batch: ScheduledBatch) -> list[int]:
-        """Pick one token per sequence, in batch.seqs order."""
         return sample_tokens(
             logits,
             self._tensor([s.sampling.temperature for s in batch.seqs], torch.float32),
@@ -242,22 +170,10 @@ class ModelRunner:
 
 
 def sample_tokens(
-    logits: torch.Tensor,        # [num_seqs, vocab]
-    temperatures: torch.Tensor,  # [num_seqs]
-    top_p: torch.Tensor,         # [num_seqs]
-) -> torch.Tensor:               # [num_seqs] int64
-    """Temperature and top p sampling for a whole batch at once.
-
-    Every request brings its own settings, so temperature and top_p are
-    vectors and the batch goes through one set of kernels. A temperature of
-    0 means greedy. Those rows still ride through the softmax (clamping
-    keeps it finite) and get their argmax back at the end. Branching per row
-    would mean a Python loop, which costs more than the maths it saves.
-
-    All of it in fp32. Sampling compares probabilities, and bf16 rounding in
-    the tail of a 150k word vocabulary is a different distribution, not a
-    rounding error.
-    """
+    logits: torch.Tensor,
+    temperatures: torch.Tensor,
+    top_p: torch.Tensor,
+) -> torch.Tensor:
     logits = logits.float()
     greedy_ids = logits.argmax(dim=-1)
     greedy = temperatures == 0
@@ -267,18 +183,11 @@ def sample_tokens(
     probs = torch.softmax(logits / temperatures.clamp(min=1e-5).unsqueeze(1), dim=-1)
     if bool((top_p < 1.0).any()):
         probs = _top_p_filter(probs, top_p)
-    # multinomial renormalizes, so the zeroed tail costs nothing extra.
     sampled_ids = torch.multinomial(probs, num_samples=1).squeeze(1)
     return torch.where(greedy, greedy_ids, sampled_ids)
 
 
 def _top_p_filter(probs: torch.Tensor, top_p: torch.Tensor) -> torch.Tensor:
-    """Zero every token outside the smallest set that reaches top_p.
-
-    The mask compares the mass BEFORE each token against top_p, so the token
-    that crosses the line is kept. Dropping it would zero the whole row
-    whenever one token already carries more than top_p on its own.
-    """
     sorted_probs, sorted_ids = probs.sort(dim=-1, descending=True)
     mass_before = sorted_probs.cumsum(dim=-1) - sorted_probs
     sorted_probs = sorted_probs.masked_fill(mass_before >= top_p.unsqueeze(1), 0.0)

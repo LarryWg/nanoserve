@@ -1,27 +1,3 @@
-"""Engine: the step loop that drives the model.
-
-The scheduler decides who runs, the runner runs them, and the sequences
-hold the results. This is the thing that turns those three into a server:
-it repeats one step forever and hands the tokens out as they appear.
-
-One step, in the order everything else assumes:
-
-    batch = scheduler.step()      # reserves this step's KV slots
-    logits = runner.forward(batch)
-    tokens = runner.sample(logits, batch)
-    seq.on_prefilled() / seq.on_token(tok)
-    scheduler.finish(seq) for whoever stopped
-
-Threading: the loop runs in its own thread and the HTTP server stays on the
-event loop. GPU kernels release the GIL, so a thread is good enough here; a
-separate process is the alternative if profiling ever says otherwise. Every
-handoff between the two threads goes through exactly two places, `_lock`
-around the scheduler and `_publish` on the way out.
-
-Tensor parallelism: see model_runner.py for the sharding plan. Rank 0 owns
-the HTTP server, the scheduler, and this loop; it broadcasts the batch
-metadata each step and the other ranks run a receive loop.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -35,18 +11,13 @@ from .model_runner import ModelRunner
 from .scheduler import Scheduler
 from .sequence import SamplingParams, Sequence
 
-# How long an idle loop sleeps before looking again. Only reached when there
-# is no work at all, and submit() wakes it early, so it costs nothing.
 IDLE_POLL_SECONDS = 0.1
 
-# How many finished requests to remember for /metrics. Bounded so a server
-# left running for a week does not grow a list forever.
 METRICS_HISTORY = 10_000
 
 
 @dataclass
 class Output:
-    """One generated token on its way back to whoever asked for it."""
     seq_id: int
     token_id: int
     finished: bool
@@ -54,16 +25,11 @@ class Output:
 
 @dataclass
 class RequestMetrics:
-    """What one finished request cost, measured inside the engine.
-
-    The benchmarks measure the same things from outside. Two numbers that
-    disagree mean the load generator is the bottleneck, not the server.
-    """
     seq_id: int
     num_prompt_tokens: int
     num_output_tokens: int
-    ttft: float          # arrival to first token
-    e2e: float           # arrival to last token
+    ttft: float
+    e2e: float
 
     @classmethod
     def from_sequence(cls, seq: Sequence) -> RequestMetrics:
@@ -91,11 +57,6 @@ class Engine:
         self._event_loop: asyncio.AbstractEventLoop | None = None
 
     def submit(self, prompt_ids: list[int], sampling: SamplingParams) -> int:
-        """Queue a request and return its id. Safe to call from any thread.
-
-        A prompt that can never fit raises here rather than waiting forever,
-        so the caller gets the error on its own request.
-        """
         seq = Sequence(next(self._seq_ids), list(prompt_ids), sampling)
         with self._lock:
             self.scheduler.add_request(seq)
@@ -104,7 +65,6 @@ class Engine:
         return seq.seq_id
 
     async def outputs(self, seq_id: int):
-        """Yield a request's tokens as the loop produces them."""
         stream = self._streams[seq_id]
         try:
             while True:
@@ -116,24 +76,12 @@ class Engine:
             self._streams.pop(seq_id, None)
 
     def abort(self, seq_id: int) -> None:
-        """Drop a request whose client went away.
-
-        The work happens at the top of the next step, not here, because this
-        runs on the server thread and the loop may be mid-forward with this
-        sequence in its batch.
-        """
         with self._lock:
             self._aborted.add(seq_id)
             self._streams.pop(seq_id, None)
         self._wake.set()
 
     def step(self) -> list[Output]:
-        """Run one iteration. Returns what was generated, empty when idle.
-
-        The lock is held around the scheduler and the sequences, never
-        around the forward pass, so a request can arrive while the GPU is
-        busy.
-        """
         with self._lock:
             self._apply_aborts()
             batch = self.scheduler.step()
@@ -156,12 +104,6 @@ class Engine:
         return outputs
 
     def info(self) -> dict:
-        """The knobs this engine is actually running with.
-
-        The benchmarks record this instead of trusting the flags they think
-        they passed, and num_blocks is measured from free VRAM at startup
-        rather than set, so it cannot be known any other way.
-        """
         manager = self.scheduler.block_manager
         info = {
             "block_size": manager.block_size,
@@ -177,20 +119,9 @@ class Engine:
         return info
 
     def metrics(self) -> list[RequestMetrics]:
-        """Timings for requests that finished on their own.
-
-        Aborted requests are left out on purpose: a client that hung up
-        early would otherwise look like a very fast one.
-        """
         return list(self._metrics)
 
     def start(self, event_loop: asyncio.AbstractEventLoop | None = None) -> None:
-        """Run the loop in a background thread.
-
-        Pass the server's event loop so finished tokens can hop threads onto
-        it. Without one, outputs are still published and tests can read them
-        straight off the queue.
-        """
         self._event_loop = event_loop
         self._thread = threading.Thread(
             target=self._loop, name="nanoserve-engine", daemon=True
@@ -206,8 +137,6 @@ class Engine:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            # Cleared before the step, so a request arriving during it still
-            # leaves the event set and the wait below returns immediately.
             self._wake.clear()
             outputs = self.step()
             for out in outputs:
@@ -218,7 +147,7 @@ class Engine:
     def _publish(self, out: Output) -> None:
         stream = self._streams.get(out.seq_id)
         if stream is None:
-            return                       # aborted; nobody is reading
+            return
         if self._event_loop is None:
             stream.put_nowait(out)
         else:

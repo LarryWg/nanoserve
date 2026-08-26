@@ -1,16 +1,3 @@
-"""HTTP server: an OpenAI-compatible front end for the engine.
-
-Two jobs. Turn text into token ids and back, and hand each request's tokens
-to the client as they appear. Everything else already happened downstream.
-
-The engine loop runs in its own thread, so nothing here may block: each
-handler awaits its own queue and the loop keeps stepping for everybody.
-Being OpenAI-compatible is not about the ecosystem, it is so the standard
-load-test tools point at this server without a shim.
-
-Not supported yet: string stop sequences (stop token ids work), logprobs,
-n > 1, and chat completions.
-"""
 from __future__ import annotations
 
 import argparse
@@ -37,19 +24,11 @@ class CompletionRequest(BaseModel):
     temperature: float = 1.0
     top_p: float = 1.0
     stream: bool = False
-    ignore_eos: bool = False      # load tests want a fixed output length
-    model: str | None = None      # accepted and ignored; we serve one model
+    ignore_eos: bool = False
+    model: str | None = None
 
 
 class Detokenizer:
-    """Turns a growing list of tokens into the text to send next.
-
-    It decodes the whole output every time instead of one token at a time,
-    because a token is not a character: spacing and multi-byte characters
-    only come out right alongside their neighbours. Quadratic in the output
-    length, and still nothing next to a forward pass.
-    """
-
     def __init__(self, tokenizer):
         self._tokenizer = tokenizer
         self._token_ids: list[int] = []
@@ -59,18 +38,12 @@ class Detokenizer:
         self._token_ids.append(token_id)
         text = self._tokenizer.decode(self._token_ids)
         if text.endswith("�"):
-            # Half a character. Hold it back until the next token finishes it.
             return ""
         delta, self.text = text[len(self.text):], text
         return delta
 
 
 def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> FastAPI:
-    """Wire an engine and a tokenizer up to HTTP.
-
-    Both are passed in rather than built here, so tests can serve a fake
-    model without a GPU.
-    """
     eos_id = getattr(tokenizer, "eos_token_id", None)
     stop_ids: tuple[int, ...] = () if eos_id is None else (eos_id,)
 
@@ -88,7 +61,6 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
 
     @app.get("/metrics")
     async def metrics():
-        """Server-side timings, to check the load generator against."""
         done = engine.metrics()
         return {
             "finished": len(done),
@@ -113,7 +85,6 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
         try:
             seq_id = engine.submit(prompt_ids, sampling)
         except ValueError as exc:
-            # The prompt is bigger than a step or bigger than the cache.
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         completion = _Completion(
@@ -134,8 +105,6 @@ def create_app(engine: Engine, tokenizer, model_name: str = "nanoserve") -> Fast
 
 
 class _Completion:
-    """One in-flight request, in either of its two shapes."""
-
     def __init__(
         self,
         engine: Engine,
@@ -158,14 +127,9 @@ class _Completion:
         try:
             async for out in self.engine.outputs(self.seq_id):
                 delta = self._consume(out)
-                # Every token gets a chunk, even when its text is not ready
-                # yet, so a client counting chunks is counting tokens. The
-                # benchmarks measure inter-token latency that way.
                 yield _sse(self._body(delta, self._reason(out)))
             yield "data: [DONE]\n\n"
         finally:
-            # Reached on a client disconnect too, which is the point: the
-            # request keeps its KV blocks until somebody says otherwise.
             self.engine.abort(self.seq_id)
 
     async def collect(self) -> dict:
@@ -210,7 +174,6 @@ def _sse(body: dict) -> str:
 
 
 def build_app(model: str, **runner_kwargs) -> FastAPI:
-    """Load the model and build a server around it."""
     from transformers import AutoTokenizer
 
     path = model
@@ -240,9 +203,6 @@ def main():
     parser.add_argument("--max-num-seqs", type=int, default=64)
     parser.add_argument("--max-num-batched-tokens", type=int, default=8192)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
-    # Which batch runs when both are possible. Prefill first gets new
-    # requests their first token sooner; decode first keeps the token
-    # stream of running ones steadier.
     parser.add_argument("--decode-first", dest="prefill_first",
                         action="store_false", default=True)
     args = parser.parse_args()

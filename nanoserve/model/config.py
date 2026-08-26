@@ -1,9 +1,3 @@
-"""HF config.json -> the handful of numbers the model actually needs.
-
-Reading the config ourselves (rather than holding a transformers config object)
-keeps the non-goals fence visible: an architecture we have not verified against
-HF is rejected at load time, not silently mis-executed.
-"""
 from __future__ import annotations
 
 import json
@@ -12,8 +6,6 @@ from pathlib import Path
 
 import torch
 
-# Dense decoder-only models we have checked token-for-token against HF.
-# Anything else fails loudly rather than running unverified.
 SUPPORTED_ARCHITECTURES = {
     "LlamaForCausalLM",
     "Qwen2ForCausalLM",
@@ -41,8 +33,8 @@ class ModelConfig:
     rope_theta: float
     max_position_embeddings: int
     tie_word_embeddings: bool
-    attention_bias: bool   # Qwen2 carries a bias on q/k/v_proj; Llama does not
-    qk_norm: bool          # Qwen3 RMSNorms q and k per head before RoPE
+    attention_bias: bool
+    qk_norm: bool
     dtype: torch.dtype
 
     def __post_init__(self) -> None:
@@ -54,7 +46,6 @@ class ModelConfig:
 
     @property
     def num_kv_groups(self) -> int:
-        """Query heads per KV head (GQA repeat factor). 1 == MHA."""
         return self.num_attention_heads // self.num_key_value_heads
 
     @classmethod
@@ -70,31 +61,20 @@ class ModelConfig:
 
         num_heads = raw["num_attention_heads"]
         hidden_size = raw["hidden_size"]
-        # Qwen3 sets head_dim explicitly and it is NOT hidden_size // num_heads
-        # (Qwen3-0.6B: 1024 hidden, 16 heads, head_dim 128). Never derive it
-        # when the config states it.
         head_dim = raw.get("head_dim") or hidden_size // num_heads
 
-        # Llama-3.1/3.2 rescale inv_freq per frequency band ("llama3" rope_type).
-        # Ignoring it would still produce fluent-looking text that is silently
-        # wrong, so reject rather than approximate.
         if raw.get("rope_scaling"):
             raise ValueError(
                 f"rope_scaling={raw['rope_scaling']} is not implemented yet; "
                 "use a model with plain RoPE (e.g. Qwen3, Qwen2.5, Llama-2)"
             )
 
-        # Qwen2 configs may enable sliding-window attention on some layers,
-        # where HF attends only over the last sliding_window tokens. We do
-        # not implement that, so reject instead of computing full attention.
         if raw.get("use_sliding_window"):
             raise ValueError(
                 "sliding-window attention is not implemented; "
                 "use a checkpoint with use_sliding_window=false"
             )
 
-        # HF treats a missing dtype field as float32. We refuse to guess
-        # instead: a wrong guess would silently cast every weight.
         dtype_name = raw.get("torch_dtype") or raw.get("dtype")
         if dtype_name is None:
             raise ValueError(

@@ -1,9 +1,3 @@
-"""Sequence lifecycle pins.
-
-The scheduler (not written yet) drives sequences through these transitions,
-so they are pinned here against the state machine the docstring promises:
-WAITING -> RUNNING -> (PREEMPTED -> WAITING) -> FINISHED.
-"""
 import pytest
 
 from nanoserve.sequence import SamplingParams, SeqStatus, Sequence
@@ -45,8 +39,6 @@ def test_first_token_time_stamped_once():
 
 
 def test_preemption_keeps_tokens_but_forgets_kv():
-    """Recompute preemption throws KV away but keeps the generated tokens,
-    so a preempted sequence prefills again (prompt + outputs) on readmission."""
     seq = make_seq()
     seq.on_prefilled()
     seq.on_token(token_id=42, now=1.0)
@@ -54,8 +46,8 @@ def test_preemption_keeps_tokens_but_forgets_kv():
     seq.on_preempted()
     assert seq.status is SeqStatus.PREEMPTED
     assert seq.num_computed_tokens == 0
-    assert seq.is_prefill                       # must recompute on readmission
-    assert seq.token_ids == [10, 11, 12, 42]    # tokens survive
+    assert seq.is_prefill
+    assert seq.token_ids == [10, 11, 12, 42]
 
 
 def test_is_stopped_on_max_new_tokens():
