@@ -85,6 +85,7 @@ def main():
         for run in range(1, args.runs + 1):
             schedule = metrics.poisson_schedule(rate, len(requests), run)
             records = engine(requests, schedule)
+            metrics.check_timestamps_are_incremental(records)
             wall = (max(r.chunk_times[-1] for r in records)
                     - min(r.send_time for r in records))
             result = metrics.summarize(records, rate, wall)
@@ -144,6 +145,7 @@ def VLLM(args):
     from vllm import LLMEngine, EngineArgs
     from vllm import SamplingParams as VllmSamplingParams
     from vllm.inputs import TokensPrompt
+    from vllm.sampling_params import RequestOutputKind
 
     engine = LLMEngine.from_engine_args(EngineArgs(
         model=args.model_path,
@@ -158,7 +160,7 @@ def VLLM(args):
         pending = list(zip(range(len(requests)), requests, schedule))
         pending.reverse()
         start = time.perf_counter()
-        live, seen = 0, {}
+        live = 0
 
         while pending or live:
             now = time.perf_counter() - start
@@ -168,23 +170,21 @@ def VLLM(args):
                     str(index),
                     TokensPrompt(prompt_token_ids=req.prompt_ids),
                     VllmSamplingParams(temperature=0.0, max_tokens=req.output_len,
-                                       ignore_eos=True),
+                                       ignore_eos=True,
+                                       output_kind=RequestOutputKind.DELTA),
                 )
                 records[str(index)] = metrics.RequestRecord(
                     req.prompt_len, req.output_len, 0, time.perf_counter()
                 )
-                seen[str(index)] = 0
                 live += 1
 
             outputs = engine.step()
             stamp = time.perf_counter()
             for out in outputs:
                 record = records[out.request_id]
-                produced = len(out.outputs[0].token_ids)
-                for _ in range(produced - seen[out.request_id]):
+                for _ in out.outputs[0].token_ids:
                     record.chunk_times.append(stamp)
                     record.num_chunks += 1
-                seen[out.request_id] = produced
                 if out.finished:
                     live -= 1
 

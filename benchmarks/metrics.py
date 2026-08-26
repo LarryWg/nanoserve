@@ -70,6 +70,21 @@ def summarize(records: list, offered_rate: float, wall: float) -> dict:
     }
 
 
+def check_timestamps_are_incremental(records: list) -> None:
+    stamped_at_once = [
+        r for r in records
+        if r.num_chunks > 4 and len(set(r.chunk_times)) < r.num_chunks / 2
+    ]
+    if stamped_at_once:
+        r = stamped_at_once[0]
+        raise RuntimeError(
+            f"{len(stamped_at_once)} of {len(records)} requests had their tokens "
+            f"timestamped together ({len(set(r.chunk_times))} distinct times for "
+            f"{r.num_chunks} tokens). The driver is reading output in bulk rather "
+            f"than as it is produced, which makes TTFT and ITL meaningless."
+        )
+
+
 def provenance(model: str, seed: int) -> dict:
     info = {"model": model, "seed": seed, "gpu": _shell(
         "nvidia-smi --query-gpu=name,driver_version --format=csv,noheader")}

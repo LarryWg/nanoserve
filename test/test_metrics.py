@@ -57,3 +57,27 @@ def test_a_failed_request_is_counted_not_silently_dropped():
     assert summary["num_requests"] == 2
     assert summary["num_failed"] == 1
     assert summary["output_tokens"] == 1
+
+
+def test_bulk_timestamped_tokens_are_rejected():
+    """The failure this exists to catch: a driver that reads output only
+    when a request finishes stamps every token at the same instant. TTFT
+    then collapses into end-to-end latency and ITL goes to zero, which
+    looks like a fast engine rather than a broken measurement."""
+    bulk = make_record(0.0, [9.0] * 10)
+    try:
+        metrics.check_timestamps_are_incremental([bulk])
+    except RuntimeError as exc:
+        assert "timestamped together" in str(exc)
+    else:
+        raise AssertionError("bulk timestamps were not caught")
+
+
+def test_normal_timestamps_pass_the_check():
+    fine = make_record(0.0, [0.1 * i for i in range(1, 11)])
+    metrics.check_timestamps_are_incremental([fine])
+
+
+def test_short_requests_are_not_flagged():
+    """A two-token request can legitimately land in one step."""
+    metrics.check_timestamps_are_incremental([make_record(0.0, [1.0, 1.0])])
