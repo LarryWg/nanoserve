@@ -74,6 +74,8 @@ message:
   chunk per token -- plus the Poisson schedule, the percentiles, failed
   requests being recorded rather than swallowed, and saturation showing up
   as a lower attained rate.
+- `test_gaps.py`: the block fragmentation arithmetic behind the README's
+  claim that a 256-token page wastes more KV cache than vLLM's 16.
 - `test_model_hf_equivalence.py`: the gate for the whole engine. Our model
   must match HF token-for-token. Marked `slow` because it downloads real
   checkpoints (~2.5 GB on first run, cached afterwards) and runs a 50-token

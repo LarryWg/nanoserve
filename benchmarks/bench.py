@@ -222,6 +222,7 @@ async def _main(args) -> None:
         except Exception:
             result["server_metrics"] = None
 
+    result["engine"] = args.engine
     result["provenance"] = provenance(args.model, args.seed)
     result["server_config"] = health.get("config", health)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
@@ -239,6 +240,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8000/v1/completions")
     parser.add_argument("--model", default="nanoserve")
+    parser.add_argument("--engine", default="nanoserve", help="label for the plots")
     parser.add_argument("--tokenizer", help="defaults to --model")
     parser.add_argument("--request-rate", type=float, default=4.0)
     parser.add_argument("--num-prompts", type=int, default=200)
