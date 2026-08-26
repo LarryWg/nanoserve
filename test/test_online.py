@@ -87,3 +87,40 @@ def test_decode_first_is_reachable_from_the_driver():
     records = online.run(engine, make_requests(4), [0.0], sampling_for)
     assert records[0].num_chunks == 4
     assert engine.info()["prefill_first"] is False
+
+
+class QuietRunner(FakeRunner):
+    """Produces nothing on its first step, the way a prefill-only step
+    looks to a driver that reads tokens as they appear."""
+
+    def __init__(self, tokens):
+        super().__init__(tokens)
+        self.calls = 0
+
+    def sample(self, logits, batch):
+        self.calls += 1
+        if self.calls == 1:
+            return []
+        return super().sample(logits, batch)
+
+
+def test_a_step_that_produces_nothing_does_not_stall_the_run():
+    """A driver that idles whenever a step came back empty will sleep until
+    the next arrival while requests are already in flight. At one request a
+    second that stalls the engine for a second at a time, and every latency
+    number afterwards describes the driver rather than the engine.
+    """
+    manager = BlockManager(num_blocks=64, block_size=8)
+    scheduler = Scheduler(block_manager=manager)
+    engine = Engine(scheduler, FakeRunner([ord("x")]))
+
+    started = time.perf_counter()
+    # Second request arrives late; the first must keep being stepped while
+    # the driver waits for it.
+    records = online.run(engine, make_requests(40, 2), [0.0, 3.0], sampling_for)
+    elapsed = time.perf_counter() - started
+
+    assert records[0].num_chunks == 40
+    # The first request's tokens must not be bunched at the far end.
+    assert records[0].chunk_times[-1] < started + 3.0, "first request was stalled"
+    assert elapsed >= 3.0

@@ -36,7 +36,7 @@ def run(engine, requests, schedule, sampling_for, deadline_s=1800) -> list:
             if out.finished:
                 live -= 1
 
-        if not outputs and pending:
+        if not outputs and pending and not live:
             time.sleep(max(0.0, pending[-1][1] - (time.perf_counter() - start)))
 
     if live or pending:
@@ -188,7 +188,7 @@ def VLLM(args):
                 if out.finished:
                     live -= 1
 
-            if not outputs and pending:
+            if not outputs and pending and not live:
                 time.sleep(max(0.0, pending[-1][2] - (time.perf_counter() - start)))
 
         return [records[k] for k in sorted(records, key=int)]
