@@ -24,7 +24,7 @@ uv run pytest
 ```
 
 The model equivalence tests download ~2.5 GB of checkpoints, so they are
-marked `slow` and excluded by default. Run them explicitly:
+marked `slow` and excluded by default. Run only those tests explicitly:
 
 ```bash
 uv run pytest -m slow

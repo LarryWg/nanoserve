@@ -35,7 +35,7 @@ git clone https://github.com/LarryWg/nanoserve.git
 cd nanoserve
 uv sync
 uv run pytest            # fast tests, no downloads
-uv run pytest -m slow    # adds the HF equivalence suite (downloads ~2.5 GB)
+uv run pytest -m slow    # HF equivalence tests only (downloads ~2.5 GB)
 ```
 
 The slow suite is the heart of the project: it loads real Qwen checkpoints
@@ -55,17 +55,17 @@ There is no HTTP server. Requests are submitted into the engine and it is
 stepped directly, which is what the benchmarks measure.
 
 The attention kernels are CUDA only. On a linux GPU box `uv sync` installs
-them along with everything else; without a GPU the tests that need them skip
+them along with everything else. Without a GPU the tests that need them skip
 themselves. `docs/gpu-setup.md` explains why torch and the kernel wheel are
 pinned to each other.
 
-## How a request flows
+## How a request flows in process
 
 ```
-prompt -> FastAPI -> Scheduler (continuous batching, preemption)
-                  -> BlockManager (paged KV cache)
-                  -> ModelRunner (prefill + decode)
-                  -> streamed tokens
+prompt token ids -> Engine.submit -> Scheduler
+Engine.step -> Scheduler -> BlockManager (paged KV allocation)
+            -> ModelRunner (prefill or decode, then sample)
+            -> output token
 ```
 
 ## Current state
@@ -110,7 +110,7 @@ rather than server stacks. Method in `benchmarks/README.md`.
 
 Offline, every prompt available at t=0: nanoserve **1040** tok/s, vLLM
 **6018**, HF static batching **375**. Continuous batching is worth 2.8x
-over static batching; the rest of this section is the 5.8x we give back.
+over static batching. The rest of this section is the 5.8x we give back.
 
 **Read the attained column first.** nanoserve saturates at 6.4 req/s.
 Past that the queue grows without bound, so the rows below it describe a
@@ -146,7 +146,7 @@ Two more, measured rather than asserted:
   51-79 ms against vLLM's 3-11 ms, which is the same fixed step seen from
   the other end.
 - **Pages are 16x too big.** flash-attn will not take a KV page smaller
-  than 256 tokens; vLLM's default is 16. Over these prompt lengths that
+  than 256 tokens. vLLM's default is 16. Over these prompt lengths that
   wastes 24% of the cache against 1.7%, so the same VRAM holds fewer
   sequences.
 
@@ -168,7 +168,7 @@ since a step costs the same regardless of batch size, throughput is batch
 size. The default was already right.
 
 (Measured on an earlier build that still had the HTTP server, so those
-absolute numbers are lower than the table above; the comparison between
+absolute numbers are lower than the table above. The comparison between
 the two settings is what holds.)
 
 ### What is next, and why

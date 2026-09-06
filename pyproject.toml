@@ -1,7 +1,7 @@
 [project]
 name = "nanoserve"
 version = "0.1.0"
-description = "A readable LLM inference engine: continuous batching, paged KV cache, tensor parallelism"
+description = "A readable LLM inference engine with continuous batching and a paged KV cache"
 requires-python = ">=3.11"
 dependencies = [
     # Linux is the GPU platform, and there torch is pinned. flash attn ships

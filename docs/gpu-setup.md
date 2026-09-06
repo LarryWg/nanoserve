@@ -10,7 +10,7 @@ Same two commands as anywhere else:
 ```bash
 uv sync
 uv run pytest              # fast tests
-uv run pytest -m slow      # adds the HF equivalence gates
+uv run pytest -m slow      # HF equivalence tests only
 ```
 
 On a linux box `uv sync` installs the CUDA kernels too. On macOS the markers
@@ -37,9 +37,9 @@ cp312 linux_x86_64`:
 | what | value | how to check |
 | --- | --- | --- |
 | python | 3.12 | `uv run python -V` |
-| torch | 2.8 | `uv run python -c "import torch; print(torch.__version__)"` |
+| torch | 2.8 | `uv run python -c "print(__import__('torch').__version__)"` |
 | CUDA major | 12 | `nvidia-smi`, needs a driver that supports it |
-| C++ ABI | true | `uv run python -c "import torch; print(torch._C._GLIBCXX_USE_CXX11_ABI)"` |
+| C++ ABI | true | `uv run python -c "print(__import__('torch')._C._GLIBCXX_USE_CXX11_ABI)"` |
 
 To move to a newer torch, find the matching wheel on the flash attn releases
 page and update both the torch pin and the wheel URL together. As of flash
