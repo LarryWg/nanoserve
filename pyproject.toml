@@ -11,6 +11,7 @@ dependencies = [
     "torch==2.8.0 ; sys_platform == 'linux'",
     "torch ; sys_platform != 'linux'",
     "transformers",
+    "huggingface-hub",
     "safetensors",
 ]
 

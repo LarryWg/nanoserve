@@ -43,6 +43,15 @@ and proves nanoserve matches HuggingFace **token-for-token** in a 50-step
 greedy decode -- first for the plain forward pass, then again with every
 token after the first served out of the paged KV cache.
 
+To generate text from one prompt on an NVIDIA GPU:
+
+```bash
+uv run python generate.py "Explain paged attention"
+```
+
+The default model is `Qwen/Qwen3-0.6B`. Use `--model-path` to select a local
+checkpoint or another supported Hugging Face model.
+
 To run it against a model (needs a GPU, since decode runs on the paged
 path):
 
